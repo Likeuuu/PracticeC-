@@ -3,5 +3,9 @@
 
 int main()
 {
+
+    lxm::rule_of_xx();
+    lxm::singleton();
+
     return 0;
 }
