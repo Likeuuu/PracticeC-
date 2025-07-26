@@ -190,7 +190,3 @@ int main()
 
     return 0;
 }
-
-
-// note
-// 1. std::unique_ptr<FactoryWay> p_factor  = std::make_unique<JungleFactor>(); //  use for poly
