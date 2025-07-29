@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <utility>
 
 class Strategy
 {
@@ -43,12 +44,22 @@ public:
 
 int main()
 {
+    // 1. common use
     std::shared_ptr<Strategy> up_stragegy_a = std::make_shared<AStrategy>();
     std::shared_ptr<Strategy> up_stragegy_b = std::make_shared<BStrategy>();
     std::unique_ptr<Context>  up_context    = std::make_unique<Context>();
 
     up_context->setStrategy(up_stragegy_a);
     up_context->doSomething();
+
+    // 2. init way
+    std::shared_ptr<Strategy> up_stragegy_b2 = std::make_shared<BStrategy>();
+    std::shared_ptr<Strategy> up_stragegy_b3();
+
+    auto deleter = [](Strategy* p){std::cout << "delete" << std::endl;};
+    std::shared_ptr<Strategy> up_stragegy_b4(new BStrategy(), deleter);
+    std::shared_ptr<Strategy> up_stragegy_b5(nullptr, deleter);
+    up_stragegy_b5.reset(new AStrategy());
 
 
     return 0;
