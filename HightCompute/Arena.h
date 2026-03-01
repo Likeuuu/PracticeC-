@@ -22,8 +22,8 @@ public:
     // const 为什么放后面,  什么时候放前面
     size_t capacity() const;
 
-    // static 函数声明为什么放文件;  &~(alignment - 1) 太秀了 
-    // 还是从整体推断当前的aligment 是否符合系统全局的倍数关系 例如: 当前是16位, 根据这个函数推断该16位变量的起始地址位置是否是16位的倍数
+    // static 函数声明为什么放文件;  &~(alignment - 1) 的妙用
+    // 目的是根据实际的字节数和对齐值， 算出应该有的字节数
     static size_t align_up(size_t n, size_t alignment) {return (n + alignment - 1) & ~(alignment - 1);};
 
 private:
