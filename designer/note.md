@@ -1,8 +1,11 @@
 #### 1. rule of zero/three/five
 #### 2. noexcept 
-        (because of && and stl(vector))
+- 如果能保证不出问题，函数加上noexcept
+- 能提升性能
+- 但出错的话，会crash
 #### 3. string a -- printf("a %s", a.c_str()) 
 #### 4. SingleTon ton2 = SingleTon::getInstance(); || SingleTon& ton2 = SingleTon::getInstance();
+- 小心 &
     
 #### 5. #define NDEBUG  disable assert
 

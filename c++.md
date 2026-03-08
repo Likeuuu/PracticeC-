@@ -280,7 +280,31 @@ int* r = new int{};     // ✅ 初始化为 0
     - static 函数的符号表是 LOCAL. 放在.cpp 会导致其它文件链接不到该定义
 
 ---
+
+### 工业开发
+
+- 虚类
+  - 必须写**虚析构**
+- 函数入参
+  - 不对其进行修改, **加 const**
+  - 对于std::string, 其是模板类, 带入函数**加&**
+- 内存泄露
+  - 尽量避免写new/delete, 多用RAII
+  - RAII
+    - 内存	    unique_ptr
+      - **默认**用unique_ptr, 少用shared_ptr
+      - shared_ptr **缺点**:
+        - 引用数量统计是 atomic, 原子操作影响性能
+        - 有循环引用风险
+        - 资源的所有权不清晰
+    - mutex	lock_guard
+    - file	      fstream
+    - socket	socket wrapper
+
+
+
 ### 转换
+
 - 转换类型有：
   - 隐式转换
     - 使用方便， 但不够明显。 不利于编程察觉
@@ -298,7 +322,24 @@ int* r = new int{};     // ✅ 初始化为 0
   - dynamic_cast
   - const_cast
   - reinterpret_cast
--  
+- 
+
+---
+
+### 虚函数
+
+- 目的：
+  - 模块**解耦** + **插件化扩展**能力， 在模板工厂等设计模式大量应用
+- 注意
+  - 需要靠指针和引用使用。 Base b = new Derived(); 这是**用不了多态**， 属于**静态编译**
+  - 有虚函数，表示该类需要被继承， 为了保证正确的释放资源，**一定需要写虚析构**
+  - **构造期间不会多态**（派生类未初始化， 所以用的是Base自己的虚函数）
+  - 多虚函数继承意味着内存中，有多个vptr
+- 内存
+  - 对于 Base b; 其内存为 虚函数Base表指针， 变量
+  - 对于 Derived d; 其内存为 虚函数Derived表指针（复制父类虚函数表内容， 并有可能进行虚函数地址替换） 变量
+  - Derived表中， 如果虚函数进行override, 那函数表的虚函数地址需要进行替换
+
 ---
 
 ### 问题:
@@ -327,10 +368,73 @@ int* r = new int{};     // ✅ 初始化为 0
 
 
 - `**auto&&**` 本质上也是转发引用
+
   - 不是“我想要一个右值引用”, 而是能绑定任何东西，并**保持其值类别**的引用
+
 - 为什么有编译和链接?
+
 - 为什么声明和定义分开就可以独立编译?
+
 - extern 的用法?
+
+- 虚函数问题
+
+  - 对于三级结构,顶层是虚类,其new和delete是怎么做的?
+
+    - new
+      - operator new (申请内存)
+      - Logger constructor
+      - FileLogger constructor
+      - AsyncFileLogger constructor
+    - delete:
+      - AsyncFileLogger destructor
+      - FileLogger destructor
+      - Logger destructor
+      - operator delete (释放内存)
+
+  - Logger* logger = new AsyncFileLogger[3];  delete logger; 会发生什么问题
+
+    - 内存长这样:
+      - +-------------+
+        | count = 3   |   (数组长度)
+        +-------------+
+        | obj[0]      |
+        +-------------+
+        | obj[1]      |
+        +-------------+
+        | obj[2]      |
+        +-------------+
+    - 只会析构obj[0]. 然后释放整个资源(**memory leak**)
+      - obj[1], obj[2] 使用就会有问题
+      - 避免new/delete
+
+  - Logger* logger = new AsyncFileLogger[3]; delete[] logger; **会发生什么问题**
+
+    - 会内存析构错误
+
+    - delete[] logger是**逐个**析构,但第一个析构完毕,编译器需要知道**第二个**析构的**内存起始地址**, 而delete[] logger 会使得编译器根据**sizeof(Logger)**进行偏移, 这会走到**错误的地址**上
+
+    - 为什么Logger* logger = new AsyncFileLogger; delete logger;没问题
+
+      - 编译器知道正确的内存起始地址 + 虚类是虚析构 
+      - **解决办法**
+        - 容器管理:std::vector<AsyncFileLogger> loggers(3); 
+        - std::array<AsyncFileLogger, 3> loggers;
+
+    - 导致 : **数组多态 不行**
+
+      - 解决办法
+
+        - 容器管理多态
+
+          - ~~~c++
+            std::vector<std::unique_ptr<Logger>> loggers;
+            
+            loggers.push_back(std::make_unique<FileLogger>());
+            loggers.push_back(std::make_unique<AsyncFileLogger>());
+            ~~~
+
+          - 
 
 ---
 
@@ -411,6 +515,7 @@ C++提供基本的类型, 就能满足开发者自定义数据结构的需求
           float f = 1e20;    // 已经溢出精度
           double d = f;      // 精度已经丢失，补不回来
           ~~~
+
 - 空类型
 
   - NULL 和 nullptr 的**区别**
@@ -459,7 +564,7 @@ C++提供基本的类型, 就能满足开发者自定义数据结构的需求
       - 问题 : **千万不能**越界
       - 解决办法 :
         -  边界检测
-        - 用更大类型作中间值运算
+        -  用更大类型作中间值运算
     - uint32_t
       - 问题 : 小心环绕
       - 解决办法:
@@ -500,11 +605,11 @@ C++提供基本的类型, 就能满足开发者自定义数据结构的需求
 ### 复合类型
 
  ~~~c++
- int a; 
- // 一般理解成 数据类型 + 变量列表
- 
- int (*fp)(int);
- // 设计理念解释 : 基本数据类型 + 声明符. 声明符:命名了一个变量,并指定变量为与基本数据类型相关的某种类型
+int a; 
+// 一般理解成 数据类型 + 变量列表
+
+int (*fp)(int);
+// 设计理念解释 : 基本数据类型 + 声明符. 声明符:命名了一个变量,并指定变量为与基本数据类型相关的某种类型
  ~~~
 
 
