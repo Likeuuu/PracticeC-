@@ -51,6 +51,10 @@ if(MNF_BUILD_TESTS)
     target_link_libraries(mnf_parser_test PRIVATE mnf)
     add_test(NAME mnf_parser_test COMMAND mnf_parser_test)
 
+    add_executable(mnf_semantic_checker_test tests/semantic_checker_test.cpp)
+    target_link_libraries(mnf_semantic_checker_test PRIVATE mnf)
+    add_test(NAME mnf_semantic_checker_test COMMAND mnf_semantic_checker_test)
+
     add_executable(mnf_elaborator_test tests/elaborator_test.cpp)
     target_link_libraries(mnf_elaborator_test PRIVATE mnf)
     add_test(NAME mnf_elaborator_test COMMAND mnf_elaborator_test)

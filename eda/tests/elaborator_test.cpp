@@ -13,10 +13,17 @@ int main() {
   output y;
 endmodule
 
+module mid(in1, out1);
+  input in1;
+  output out1;
+  leaf u_leaf(.a(in1), .y(out1));
+endmodule
+
 module top(in1, out1);
   input in1;
   output out1;
-  leaf u1(.a(in1), .y(out1));
+  wire mid_out;
+  mid u_mid(.in1(in1), .out1(mid_out));
 endmodule
 )";
 
@@ -34,7 +41,12 @@ endmodule
   auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "top");
   assert(design_result.Ok());
   assert(design_result.value->top_name == "top");
-  assert(design_result.value->modules.size() == 2);
+  assert(design_result.value->modules.size() == 3);
+  assert(design_result.value->top_instances.size() == 1);
+  assert(design_result.value->top_instances[0].module_name == "mid");
+  assert(design_result.value->top_instances[0].children.size() == 1);
+  assert(design_result.value->top_instances[0].children[0].module_name == "leaf");
+  assert(design_result.value->top_instances[0].children[0].instance_name == "u_leaf");
 
   return 0;
 }

@@ -19,6 +19,7 @@ struct InstanceIR {
 
 struct ModuleIR {
   std::string name;
+  std::vector<std::string> ports;
 };
 
 struct ElaboratedDesign {
