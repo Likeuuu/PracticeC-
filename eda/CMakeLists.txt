@@ -58,4 +58,8 @@ if(MNF_BUILD_TESTS)
     add_executable(mnf_elaborator_test tests/elaborator_test.cpp)
     target_link_libraries(mnf_elaborator_test PRIVATE mnf)
     add_test(NAME mnf_elaborator_test COMMAND mnf_elaborator_test)
+
+    add_executable(mnf_elaboration_cycle_test tests/elaboration_cycle_test.cpp)
+    target_link_libraries(mnf_elaboration_cycle_test PRIVATE mnf)
+    add_test(NAME mnf_elaboration_cycle_test COMMAND mnf_elaboration_cycle_test)
 endif()

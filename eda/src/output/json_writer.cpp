@@ -52,6 +52,23 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     oss << "]}";
   }
   oss << "],\n";
+  oss << "  \"module_dependencies\": [";
+  for (std::size_t i = 0; i < design.module_dependencies.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "{\"from\": \"" << design.module_dependencies[i].from_module
+        << "\", \"to\": \"" << design.module_dependencies[i].to_module << "\"}";
+  }
+  oss << "],\n";
+  oss << "  \"module_order\": [";
+  for (std::size_t i = 0; i < design.module_order.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "\"" << design.module_order[i] << "\"";
+  }
+  oss << "],\n";
   oss << "  \"top_instances\": [";
   for (std::size_t i = 0; i < design.top_instances.size(); ++i) {
     if (i != 0) {

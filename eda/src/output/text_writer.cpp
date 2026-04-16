@@ -20,6 +20,17 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
   std::ostringstream oss;
   oss << "Top: " << design.top_name << "\n";
   oss << "Module count: " << design.modules.size() << "\n";
+  oss << "Module dependencies: " << design.module_dependencies.size() << "\n";
+  if (!design.module_order.empty()) {
+    oss << "Module order: ";
+    for (std::size_t i = 0; i < design.module_order.size(); ++i) {
+      if (i != 0) {
+        oss << " -> ";
+      }
+      oss << design.module_order[i];
+    }
+    oss << "\n";
+  }
   oss << "Top instances: " << design.top_instances.size() << "\n";
   for (const auto& instance : design.top_instances) {
     WriteInstanceSummary(oss, instance, 1);

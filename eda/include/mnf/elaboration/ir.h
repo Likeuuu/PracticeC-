@@ -22,9 +22,16 @@ struct ModuleIR {
   std::vector<std::string> ports;
 };
 
+struct ModuleDependencyIR {
+  std::string from_module;
+  std::string to_module;
+};
+
 struct ElaboratedDesign {
   std::string top_name;
   std::vector<ModuleIR> modules;
+  std::vector<ModuleDependencyIR> module_dependencies;
+  std::vector<std::string> module_order;
   std::vector<InstanceIR> top_instances;
 };
 

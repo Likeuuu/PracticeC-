@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <string>
 
@@ -42,6 +43,11 @@ endmodule
   assert(design_result.Ok());
   assert(design_result.value->top_name == "top");
   assert(design_result.value->modules.size() == 3);
+  assert(design_result.value->module_dependencies.size() == 2);
+  assert(design_result.value->module_order.size() == 3);
+  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "top") != design_result.value->module_order.end());
+  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "mid") != design_result.value->module_order.end());
+  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "leaf") != design_result.value->module_order.end());
   assert(design_result.value->top_instances.size() == 1);
   assert(design_result.value->top_instances[0].module_name == "mid");
   assert(design_result.value->top_instances[0].children.size() == 1);

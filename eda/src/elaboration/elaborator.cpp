@@ -1,6 +1,10 @@
 #include "mnf/elaboration/elaborator.h"
 
+#include <algorithm>
+#include <queue>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "mnf/common/diagnostic.h"
 
@@ -17,6 +21,60 @@ const ModuleDecl* FindTopModule(const Program& program, const std::string& top_n
   return nullptr;
 }
 
+std::vector<ModuleDependencyIR> CollectDependencies(const Program& program) {
+  std::vector<ModuleDependencyIR> dependencies;
+  for (const auto& module : program.modules) {
+    for (const auto& instance : module->instances) {
+      dependencies.push_back(ModuleDependencyIR{module->name, instance.module_name});
+    }
+  }
+  return dependencies;
+}
+
+std::vector<std::string> ComputeModuleOrder(const Program& program,
+                                            const std::vector<ModuleDependencyIR>& dependencies,
+                                            bool* has_cycle) {
+  std::unordered_map<std::string, int> indegree;
+  std::unordered_map<std::string, std::vector<std::string>> graph;
+
+  for (const auto& module : program.modules) {
+    indegree.emplace(module->name, 0);
+    graph.emplace(module->name, std::vector<std::string>{});
+  }
+
+  for (const auto& dependency : dependencies) {
+    graph[dependency.from_module].push_back(dependency.to_module);
+    ++indegree[dependency.to_module];
+  }
+
+  std::queue<std::string> ready;
+  for (const auto& [name, degree] : indegree) {
+    if (degree == 0) {
+      ready.push(name);
+    }
+  }
+
+  std::vector<std::string> order;
+  while (!ready.empty()) {
+    std::string name = ready.front();
+    ready.pop();
+    order.push_back(name);
+
+    for (const auto& next : graph[name]) {
+      --indegree[next];
+      if (indegree[next] == 0) {
+        ready.push(next);
+      }
+    }
+  }
+
+  *has_cycle = order.size() != program.modules.size();
+  if (*has_cycle) {
+    order.clear();
+  }
+  return order;
+}
+
 }  // namespace
 
 Result<ElaboratedDesign> Elaborator::Elaborate(const Program& program,
@@ -27,6 +85,17 @@ Result<ElaboratedDesign> Elaborator::Elaborate(const Program& program,
 
   for (const auto& module : program.modules) {
     design.modules.push_back(ModuleIR{module->name, module->ports});
+  }
+
+  design.module_dependencies = CollectDependencies(program);
+
+  bool has_cycle = false;
+  design.module_order = ComputeModuleOrder(program, design.module_dependencies, &has_cycle);
+  if (has_cycle) {
+    return Result<ElaboratedDesign>{std::nullopt,
+                                    {Diagnostic{DiagnosticLevel::Error,
+                                                "Module dependency cycle detected during elaboration",
+                                                {"", 1, 1}}}};
   }
 
   const ModuleDecl* top_module = FindTopModule(program, top_name);
