@@ -30,6 +30,15 @@ std::vector<Diagnostic> SemanticChecker::Check(const Program& program, SymbolTab
       diagnostics.push_back(Diagnostic{DiagnosticLevel::Error, "Duplicate module definition: " + module->name, module->location});
       continue;
     }
+
+    std::unordered_set<std::string> check_dump;
+    for(const auto& iter : module->ports)
+    {
+      if (!check_dump.insert(iter).second){
+        diagnostics.push_back(Diagnostic{DiagnosticLevel::Error, "Duplicate port definition: " + module->name, module->location});
+        continue;
+      }
+    }
   }
 
   for (const auto& module : program.modules) {
