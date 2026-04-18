@@ -59,6 +59,10 @@ if(MNF_BUILD_TESTS)
     target_link_libraries(mnf_semantic_checker_repeat_ports PRIVATE mnf)
     add_test(NAME mnf_semantic_checker_repeat_ports COMMAND mnf_semantic_checker_repeat_ports)
 
+    add_executable(mnf_semantic_checker_port_consistency_test tests/semantic_checker_port_consistency_test.cpp)
+    target_link_libraries(mnf_semantic_checker_port_consistency_test PRIVATE mnf)
+    add_test(NAME mnf_semantic_checker_port_consistency_test COMMAND mnf_semantic_checker_port_consistency_test)
+
     add_executable(mnf_elaborator_test tests/elaborator_test.cpp)
     target_link_libraries(mnf_elaborator_test PRIVATE mnf)
     add_test(NAME mnf_elaborator_test COMMAND mnf_elaborator_test)

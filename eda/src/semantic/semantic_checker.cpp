@@ -16,6 +16,14 @@ std::vector<std::string> CollectDeclaredSignals(const ModuleDecl& module) {
   return signals;
 }
 
+std::vector<std::string> CollectDeclaredPorts(const ModuleDecl& module) {
+  std::vector<std::string> ports;
+  for (const auto& decl : module.port_decls) {
+    ports.insert(ports.end(), decl.names.begin(), decl.names.end());
+  }
+  return ports;
+}
+
 bool Contains(const std::vector<std::string>& names, const std::string& name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -27,16 +35,18 @@ std::vector<Diagnostic> SemanticChecker::Check(const Program& program, SymbolTab
 
   for (const auto& module : program.modules) {
     if (!symbols.AddModule(module.get())) {
-      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error, "Duplicate module definition: " + module->name, module->location});
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Duplicate module definition: " + module->name,
+                                       module->location});
       continue;
     }
 
-    std::unordered_set<std::string> check_dump;
-    for(const auto& iter : module->ports)
-    {
-      if (!check_dump.insert(iter).second){
-        diagnostics.push_back(Diagnostic{DiagnosticLevel::Error, "Duplicate port definition: " + module->name, module->location});
-        continue;
+    std::unordered_set<std::string> seen_ports;
+    for (const auto& port : module->ports) {
+      if (!seen_ports.insert(port).second) {
+        diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                         "Duplicate port definition in module header: " + port,
+                                         module->location});
       }
     }
   }
@@ -52,6 +62,29 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                   const SymbolTable& symbols,
                                   std::vector<Diagnostic>& diagnostics) const {
   const auto declared_signals = CollectDeclaredSignals(module);
+  const auto declared_ports = CollectDeclaredPorts(module);
+
+  std::unordered_set<std::string> seen_declared_ports;
+  for (const auto& port_name : declared_ports) {
+    if (!seen_declared_ports.insert(port_name).second) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Duplicate port declaration: " + port_name,
+                                       module.location});
+    }
+    if (!Contains(module.ports, port_name)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Declared port not listed in module header: " + port_name,
+                                       module.location});
+    }
+  }
+
+  for (const auto& port_name : module.ports) {
+    if (!Contains(declared_ports, port_name)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Module header port missing input/output declaration: " + port_name,
+                                       module.location});
+    }
+  }
 
   for (const auto& instance : module.instances) {
     const ModuleDecl* referenced_module = symbols.FindModule(instance.module_name);
