@@ -1,12 +1,16 @@
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <string>
 #include <vector>
 
 #include "mnf/lexer/lexer.h"
 #include "mnf/lexer/token.h"
 
-int main() {
-  const std::string input = "module top(a, b); // comment\ninput a, b;\nendmodule\n";
+TEST(LexerTest, TokenizesModuleDeclarationAndSkipsComments) {
+  const std::string input = R"(module top(a, b); // comment
+input a, b;
+endmodule
+)";
   mnf::Lexer lexer(input, "lexer_test.nl");
 
   const std::vector<mnf::TokenKind> expected = {
@@ -29,8 +33,6 @@ int main() {
 
   for (mnf::TokenKind kind : expected) {
     const mnf::Token token = lexer.NextToken();
-    assert(token.kind == kind);
+    EXPECT_EQ(token.kind, kind);
   }
-
-  return 0;
 }

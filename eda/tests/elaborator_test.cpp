@@ -1,5 +1,6 @@
+#include <gtest/gtest.h>
+
 #include <algorithm>
-#include <cassert>
 #include <string>
 
 #include "mnf/elaboration/elaborator.h"
@@ -8,7 +9,7 @@
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
 
-int main() {
+TEST(ElaboratorTest, BuildsHierarchyAndModuleDependencyOrder) {
   const std::string input = R"(module leaf(a, y);
   input a;
   output y;
@@ -31,28 +32,26 @@ endmodule
   mnf::Lexer lexer(input, "elaborator_test.nl");
   mnf::Parser parser(lexer);
   auto parse_result = parser.ParseProgram();
-  assert(parse_result.Ok());
+  ASSERT_TRUE(parse_result.Ok());
 
   mnf::SymbolTable symbols;
   mnf::SemanticChecker checker;
   const auto diagnostics = checker.Check(*parse_result.value, symbols);
-  assert(diagnostics.empty());
+  ASSERT_TRUE(diagnostics.empty());
 
   mnf::Elaborator elaborator;
   auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "top");
-  assert(design_result.Ok());
-  assert(design_result.value->top_name == "top");
-  assert(design_result.value->modules.size() == 3);
-  assert(design_result.value->module_dependencies.size() == 2);
-  assert(design_result.value->module_order.size() == 3);
-  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "top") != design_result.value->module_order.end());
-  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "mid") != design_result.value->module_order.end());
-  assert(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "leaf") != design_result.value->module_order.end());
-  assert(design_result.value->top_instances.size() == 1);
-  assert(design_result.value->top_instances[0].module_name == "mid");
-  assert(design_result.value->top_instances[0].children.size() == 1);
-  assert(design_result.value->top_instances[0].children[0].module_name == "leaf");
-  assert(design_result.value->top_instances[0].children[0].instance_name == "u_leaf");
-
-  return 0;
+  ASSERT_TRUE(design_result.Ok());
+  EXPECT_EQ(design_result.value->top_name, "top");
+  EXPECT_EQ(design_result.value->modules.size(), 3u);
+  EXPECT_EQ(design_result.value->module_dependencies.size(), 2u);
+  EXPECT_EQ(design_result.value->module_order.size(), 3u);
+  EXPECT_NE(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "top"), design_result.value->module_order.end());
+  EXPECT_NE(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "mid"), design_result.value->module_order.end());
+  EXPECT_NE(std::find(design_result.value->module_order.begin(), design_result.value->module_order.end(), "leaf"), design_result.value->module_order.end());
+  ASSERT_EQ(design_result.value->top_instances.size(), 1u);
+  EXPECT_EQ(design_result.value->top_instances[0].module_name, "mid");
+  ASSERT_EQ(design_result.value->top_instances[0].children.size(), 1u);
+  EXPECT_EQ(design_result.value->top_instances[0].children[0].module_name, "leaf");
+  EXPECT_EQ(design_result.value->top_instances[0].children[0].instance_name, "u_leaf");
 }

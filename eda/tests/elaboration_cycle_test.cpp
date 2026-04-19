@@ -1,4 +1,5 @@
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <string>
 
 #include "mnf/elaboration/elaborator.h"
@@ -7,7 +8,7 @@
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
 
-int main() {
+TEST(ElaboratorTest, RejectsModuleDependencyCycles) {
   const std::string input = R"(module a(in1, out1);
   input in1;
   output out1;
@@ -24,17 +25,17 @@ endmodule
   mnf::Lexer lexer(input, "elaboration_cycle_test.nl");
   mnf::Parser parser(lexer);
   auto parse_result = parser.ParseProgram();
-  assert(parse_result.Ok());
+  ASSERT_TRUE(parse_result.Ok());
 
   mnf::SymbolTable symbols;
   mnf::SemanticChecker checker;
   const auto diagnostics = checker.Check(*parse_result.value, symbols);
-  assert(diagnostics.empty());
+  ASSERT_TRUE(diagnostics.empty());
 
   mnf::Elaborator elaborator;
   auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "a");
-  assert(!design_result.Ok());
-  assert(!design_result.diagnostics.empty());
+  ASSERT_FALSE(design_result.Ok());
+  ASSERT_FALSE(design_result.diagnostics.empty());
 
   bool saw_cycle = false;
   for (const auto& diagnostic : design_result.diagnostics) {
@@ -42,7 +43,5 @@ endmodule
       saw_cycle = true;
     }
   }
-  assert(saw_cycle);
-
-  return 0;
+  EXPECT_TRUE(saw_cycle);
 }

@@ -1,4 +1,5 @@
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <string>
 
 #include "mnf/lexer/lexer.h"
@@ -6,7 +7,7 @@
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
 
-int main() {
+TEST(SemanticCheckerTest, ReportsPortHeaderAndDeclarationMismatch) {
   const std::string input = R"(module leaf(a, y);
   input a;
   output y;
@@ -23,12 +24,12 @@ endmodule
   mnf::Lexer lexer(input, "semantic_checker_port_consistency_test.nl");
   mnf::Parser parser(lexer);
   auto parse_result = parser.ParseProgram();
-  assert(parse_result.Ok());
+  ASSERT_TRUE(parse_result.Ok());
 
   mnf::SymbolTable symbols;
   mnf::SemanticChecker checker;
   const auto diagnostics = checker.Check(*parse_result.value, symbols);
-  assert(!diagnostics.empty());
+  ASSERT_FALSE(diagnostics.empty());
 
   bool saw_missing_decl = false;
   bool saw_extra_decl = false;
@@ -41,8 +42,6 @@ endmodule
     }
   }
 
-  assert(saw_missing_decl);
-  assert(saw_extra_decl);
-
-  return 0;
+  EXPECT_TRUE(saw_missing_decl);
+  EXPECT_TRUE(saw_extra_decl);
 }

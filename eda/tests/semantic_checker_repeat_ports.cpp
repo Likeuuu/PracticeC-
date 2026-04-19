@@ -1,4 +1,5 @@
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <string>
 
 #include "mnf/lexer/lexer.h"
@@ -6,7 +7,7 @@
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
 
-int main() {
+TEST(SemanticCheckerTest, ReportsDuplicatePortsInModuleHeader) {
   const std::string input = R"(module leaf(a, a, y);
   input a;
   output y;
@@ -22,12 +23,12 @@ endmodule
   mnf::Lexer lexer(input, "semantic_checker_repeat_ports.nl");
   mnf::Parser parser(lexer);
   auto parse_result = parser.ParseProgram();
-  assert(parse_result.Ok());
+  ASSERT_TRUE(parse_result.Ok());
 
   mnf::SymbolTable symbols;
   mnf::SemanticChecker checker;
   const auto diagnostics = checker.Check(*parse_result.value, symbols);
-  assert(!diagnostics.empty());
+  ASSERT_FALSE(diagnostics.empty());
 
   bool saw_duplicate_header_port = false;
   for (const auto& diagnostic : diagnostics) {
@@ -35,7 +36,5 @@ endmodule
       saw_duplicate_header_port = true;
     }
   }
-  assert(saw_duplicate_header_port);
-
-  return 0;
+  EXPECT_TRUE(saw_duplicate_header_port);
 }

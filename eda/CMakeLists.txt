@@ -41,41 +41,31 @@ add_executable(mnf_cli
 target_link_libraries(mnf_cli PRIVATE mnf)
 
 if(MNF_BUILD_TESTS)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+
     enable_testing()
+    include(GoogleTest)
 
-    add_executable(mnf_lexer_test tests/lexer_test.cpp)
-    target_link_libraries(mnf_lexer_test PRIVATE mnf)
-    add_test(NAME mnf_lexer_test COMMAND mnf_lexer_test)
+    add_executable(mnf_tests
+        tests/lexer_test.cpp
+        tests/parser_test.cpp
+        tests/semantic_checker_test.cpp
+        tests/semantic_checker_repeat_ports.cpp
+        tests/semantic_checker_port_consistency_test.cpp
+        tests/semantic_checker_wire_port_conflict_test.cpp
+        tests/semantic_checker_repeat_wires_test.cpp
+        tests/elaborator_test.cpp
+        tests/elaboration_cycle_test.cpp
+    )
 
-    add_executable(mnf_parser_test tests/parser_test.cpp)
-    target_link_libraries(mnf_parser_test PRIVATE mnf)
-    add_test(NAME mnf_parser_test COMMAND mnf_parser_test)
+    target_link_libraries(mnf_tests PRIVATE mnf GTest::gtest_main)
 
-    add_executable(mnf_semantic_checker_test tests/semantic_checker_test.cpp)
-    target_link_libraries(mnf_semantic_checker_test PRIVATE mnf)
-    add_test(NAME mnf_semantic_checker_test COMMAND mnf_semantic_checker_test)
-
-    add_executable(mnf_semantic_checker_repeat_ports tests/semantic_checker_repeat_ports.cpp)
-    target_link_libraries(mnf_semantic_checker_repeat_ports PRIVATE mnf)
-    add_test(NAME mnf_semantic_checker_repeat_ports COMMAND mnf_semantic_checker_repeat_ports)
-
-    add_executable(mnf_semantic_checker_port_consistency_test tests/semantic_checker_port_consistency_test.cpp)
-    target_link_libraries(mnf_semantic_checker_port_consistency_test PRIVATE mnf)
-    add_test(NAME mnf_semantic_checker_port_consistency_test COMMAND mnf_semantic_checker_port_consistency_test)
-
-    add_executable(mnf_elaborator_test tests/elaborator_test.cpp)
-    target_link_libraries(mnf_elaborator_test PRIVATE mnf)
-    add_test(NAME mnf_elaborator_test COMMAND mnf_elaborator_test)
-
-    add_executable(mnf_semantic_checker_wire_port_conflict_test tests/semantic_checker_wire_port_conflict_test.cpp)
-    target_link_libraries(mnf_semantic_checker_wire_port_conflict_test PRIVATE mnf)
-    add_test(NAME mnf_semantic_checker_wire_port_conflict_test COMMAND mnf_semantic_checker_wire_port_conflict_test)
-
-    add_executable(mnf_semantic_checker_repeat_wires_test tests/semantic_checker_repeat_wires_test.cpp)
-    target_link_libraries(mnf_semantic_checker_repeat_wires_test PRIVATE mnf)
-    add_test(NAME mnf_semantic_checker_repeat_wires_test COMMAND mnf_semantic_checker_repeat_wires_test)
-
-    add_executable(mnf_elaboration_cycle_test tests/elaboration_cycle_test.cpp)
-    target_link_libraries(mnf_elaboration_cycle_test PRIVATE mnf)
-    add_test(NAME mnf_elaboration_cycle_test COMMAND mnf_elaboration_cycle_test)
+    gtest_discover_tests(mnf_tests)
 endif()
