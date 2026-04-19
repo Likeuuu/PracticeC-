@@ -16,6 +16,15 @@ std::vector<std::string> CollectDeclaredSignals(const ModuleDecl& module) {
   return signals;
 }
 
+std::vector<std::string> CollectDeclaredWire(const ModuleDecl& module) {
+  std::vector<std::string> wire_names;
+  for (const auto& wire_decl : module.wire_decls) {
+    wire_names.insert(wire_names.end(), wire_decl.names.begin(), wire_decl.names.end());
+  }
+
+  return wire_names;
+}
+
 std::vector<std::string> CollectDeclaredPorts(const ModuleDecl& module) {
   std::vector<std::string> ports;
   for (const auto& decl : module.port_decls) {
@@ -62,7 +71,8 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                   const SymbolTable& symbols,
                                   std::vector<Diagnostic>& diagnostics) const {
   const auto declared_signals = CollectDeclaredSignals(module);
-  const auto declared_ports = CollectDeclaredPorts(module);
+  const auto declared_ports   = CollectDeclaredPorts(module);
+  const auto declared_wires   = CollectDeclaredWire(module);
 
   std::unordered_set<std::string> seen_declared_ports;
   for (const auto& port_name : declared_ports) {
@@ -82,6 +92,21 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
     if (!Contains(declared_ports, port_name)) {
       diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
                                        "Module header port missing input/output declaration: " + port_name,
+                                       module.location});
+    }
+  }
+
+  std::unordered_set<std::string> seen_declared_wires;
+  for (const auto& wire_name : declared_wires) {
+    if (!seen_declared_wires.insert(wire_name).second) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Duplicate wire declaration: " + wire_name,
+                                       module.location});
+    }
+
+    if (Contains(module.ports, wire_name)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Wire name conflicts with module port: " + wire_name,
                                        module.location});
     }
   }

@@ -67,6 +67,14 @@ if(MNF_BUILD_TESTS)
     target_link_libraries(mnf_elaborator_test PRIVATE mnf)
     add_test(NAME mnf_elaborator_test COMMAND mnf_elaborator_test)
 
+    add_executable(mnf_semantic_checker_wire_port_conflict_test tests/semantic_checker_wire_port_conflict_test.cpp)
+    target_link_libraries(mnf_semantic_checker_wire_port_conflict_test PRIVATE mnf)
+    add_test(NAME mnf_semantic_checker_wire_port_conflict_test COMMAND mnf_semantic_checker_wire_port_conflict_test)
+
+    add_executable(mnf_semantic_checker_repeat_wires_test tests/semantic_checker_repeat_wires_test.cpp)
+    target_link_libraries(mnf_semantic_checker_repeat_wires_test PRIVATE mnf)
+    add_test(NAME mnf_semantic_checker_repeat_wires_test COMMAND mnf_semantic_checker_repeat_wires_test)
+
     add_executable(mnf_elaboration_cycle_test tests/elaboration_cycle_test.cpp)
     target_link_libraries(mnf_elaboration_cycle_test PRIVATE mnf)
     add_test(NAME mnf_elaboration_cycle_test COMMAND mnf_elaboration_cycle_test)
