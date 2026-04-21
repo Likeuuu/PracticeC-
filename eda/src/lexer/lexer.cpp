@@ -30,6 +30,8 @@ const char* ToString(TokenKind kind) {
       return "Output";
     case TokenKind::Wire:
       return "Wire";
+    case TokenKind::Assign:
+      return "Assign";
     case TokenKind::Identifier:
       return "Identifier";
     case TokenKind::Number:
@@ -44,6 +46,8 @@ const char* ToString(TokenKind kind) {
       return "Semicolon";
     case TokenKind::Dot:
       return "Dot";
+    case TokenKind::Equal:
+      return "Equal";
     case TokenKind::EndOfFile:
       return "EndOfFile";
     case TokenKind::Invalid:
@@ -97,6 +101,8 @@ Token Lexer::LexToken() {
       return MakeToken(TokenKind::Semicolon, ";", file_name_, start_line, start_column);
     case '.':
       return MakeToken(TokenKind::Dot, ".", file_name_, start_line, start_column);
+    case '=':
+      return MakeToken(TokenKind::Equal, "=", file_name_, start_line, start_column);
     default:
       break;
   }
@@ -117,6 +123,7 @@ Token Lexer::LexToken() {
         {"input", TokenKind::Input},
         {"output", TokenKind::Output},
         {"wire", TokenKind::Wire},
+        {"assign", TokenKind::Assign},
     };
 
     const auto it = keywords.find(lexeme);

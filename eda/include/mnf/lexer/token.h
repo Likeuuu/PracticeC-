@@ -12,6 +12,7 @@ enum class TokenKind {
   Input,
   Output,
   Wire,
+  Assign,
   Identifier,
   Number,
   LParen,
@@ -19,6 +20,7 @@ enum class TokenKind {
   Comma,
   Semicolon,
   Dot,
+  Equal,
   EndOfFile,
   Invalid
 };

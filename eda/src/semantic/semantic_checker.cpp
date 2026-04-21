@@ -71,8 +71,8 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                   const SymbolTable& symbols,
                                   std::vector<Diagnostic>& diagnostics) const {
   const auto declared_signals = CollectDeclaredSignals(module);
-  const auto declared_ports   = CollectDeclaredPorts(module);
-  const auto declared_wires   = CollectDeclaredWire(module);
+  const auto declared_ports = CollectDeclaredPorts(module);
+  const auto declared_wires = CollectDeclaredWire(module);
 
   std::unordered_set<std::string> seen_declared_ports;
   for (const auto& port_name : declared_ports) {
@@ -108,6 +108,21 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
       diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
                                        "Wire name conflicts with module port: " + wire_name,
                                        module.location});
+    }
+  }
+
+  for (const auto& assign_stmt : module.assign_stmts) {
+    if (!Contains(declared_signals, assign_stmt.lhs)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Assign target is not declared: " + assign_stmt.lhs,
+                                       assign_stmt.location});
+    }
+
+    if (assign_stmt.rhs.kind == Expression::Kind::Identifier &&
+        !Contains(declared_signals, assign_stmt.rhs.text)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Assign source is not declared: " + assign_stmt.rhs.text,
+                                       assign_stmt.rhs.location});
     }
   }
 

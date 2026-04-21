@@ -38,3 +38,36 @@ endmodule
   }
   EXPECT_TRUE(saw_unknown_port);
 }
+
+TEST(SemanticCheckerTest, ReportsUndeclaredSignalsInAssignStatements) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  assign missing_lhs = in1;
+  assign out1 = missing_rhs;
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "semantic_assign_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_FALSE(diagnostics.empty());
+
+  bool saw_missing_lhs = false;
+  bool saw_missing_rhs = false;
+  for (const auto& diagnostic : diagnostics) {
+    if (diagnostic.message.find("Assign target is not declared") != std::string::npos) {
+      saw_missing_lhs = true;
+    }
+    if (diagnostic.message.find("Assign source is not declared") != std::string::npos) {
+      saw_missing_rhs = true;
+    }
+  }
+  EXPECT_TRUE(saw_missing_lhs);
+  EXPECT_TRUE(saw_missing_rhs);
+}

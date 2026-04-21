@@ -27,6 +27,21 @@ struct WireDecl : AstNode {
   std::vector<std::string> names;
 };
 
+struct Expression : AstNode {
+  enum class Kind {
+    Identifier,
+    Number
+  };
+
+  Kind kind = Kind::Identifier;
+  std::string text;
+};
+
+struct AssignStmt : AstNode {
+  std::string lhs;
+  Expression rhs;
+};
+
 struct NamedConnection : AstNode {
   std::string port_name;
   std::string signal_name;
@@ -43,6 +58,7 @@ struct ModuleDecl : AstNode {
   std::vector<std::string> ports;
   std::vector<PortDecl> port_decls;
   std::vector<WireDecl> wire_decls;
+  std::vector<AssignStmt> assign_stmts;
   std::vector<InstanceDecl> instances;
 };
 

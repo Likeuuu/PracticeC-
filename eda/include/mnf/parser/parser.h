@@ -20,6 +20,8 @@ private:
   Result<std::unique_ptr<ModuleDecl>> ParseModule();
   Result<PortDecl> ParsePortDecl();
   Result<WireDecl> ParseWireDecl();
+  Result<AssignStmt> ParseAssignStmt();
+  Result<Expression> ParseExpression();
   Result<InstanceDecl> ParseInstanceDecl();
   Result<NamedConnection> ParseNamedConnection();
 
