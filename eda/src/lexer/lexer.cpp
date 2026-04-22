@@ -48,6 +48,8 @@ const char* ToString(TokenKind kind) {
       return "Dot";
     case TokenKind::Equal:
       return "Equal";
+    case TokenKind::Ampersand:
+      return "Ampersand";
     case TokenKind::EndOfFile:
       return "EndOfFile";
     case TokenKind::Invalid:
@@ -103,6 +105,8 @@ Token Lexer::LexToken() {
       return MakeToken(TokenKind::Dot, ".", file_name_, start_line, start_column);
     case '=':
       return MakeToken(TokenKind::Equal, "=", file_name_, start_line, start_column);
+    case '&':
+      return MakeToken(TokenKind::Ampersand, "&", file_name_, start_line, start_column);
     default:
       break;
   }

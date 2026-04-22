@@ -199,6 +199,31 @@ Result<AssignStmt> Parser::ParseAssignStmt() {
 }
 
 Result<Expression> Parser::ParseExpression() {
+  auto lhs = ParsePrimaryExpression();
+  if (!lhs.Ok()) {
+    return Result<Expression>{std::nullopt, {}};
+  }
+
+  while (current_.kind == TokenKind::Ampersand) {
+    Token op_token = Consume();
+    auto rhs = ParsePrimaryExpression();
+    if (!rhs.Ok()) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+
+    Expression combined;
+    combined.location = op_token.location;
+    combined.kind = Expression::Kind::Binary;
+    combined.text = op_token.lexeme;
+    combined.lhs = std::make_unique<Expression>(std::move(*lhs.value));
+    combined.rhs = std::make_unique<Expression>(std::move(*rhs.value));
+    lhs = Result<Expression>{std::move(combined), {}};
+  }
+
+  return lhs;
+}
+
+Result<Expression> Parser::ParsePrimaryExpression() {
   Expression expr;
   expr.location = current_.location;
 

@@ -40,11 +40,12 @@ endmodule
 }
 
 TEST(SemanticCheckerTest, ReportsUndeclaredSignalsInAssignStatements) {
-  const std::string input = R"(module top(in1, out1);
+  const std::string input = R"(module top(in1, in2, out1);
   input in1;
+  input in2;
   output out1;
   assign missing_lhs = in1;
-  assign out1 = missing_rhs;
+  assign out1 = in1 & missing_rhs;
 endmodule
 )";
 

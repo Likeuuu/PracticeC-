@@ -42,12 +42,13 @@ endmodule
   EXPECT_EQ(top.instances[0].connections[0].signal_name, "in1");
 }
 
-TEST(ParserTest, ParsesAssignStatementsWithIdentifiersAndNumbers) {
-  const std::string input = R"(module top(in1, out1);
+TEST(ParserTest, ParsesAssignStatementsWithIdentifiersNumbersAndBinaryAnd) {
+  const std::string input = R"(module top(in1, in2, out1);
   input in1;
+  input in2;
   output out1;
   wire mid;
-  assign mid = in1;
+  assign mid = in1 & in2;
   assign out1 = 1;
 endmodule
 )";
@@ -61,8 +62,14 @@ endmodule
   const mnf::ModuleDecl& top = *result.value->modules[0];
   ASSERT_EQ(top.assign_stmts.size(), 2u);
   EXPECT_EQ(top.assign_stmts[0].lhs, "mid");
-  EXPECT_EQ(top.assign_stmts[0].rhs.kind, mnf::Expression::Kind::Identifier);
-  EXPECT_EQ(top.assign_stmts[0].rhs.text, "in1");
+  EXPECT_EQ(top.assign_stmts[0].rhs.kind, mnf::Expression::Kind::Binary);
+  ASSERT_NE(top.assign_stmts[0].rhs.lhs, nullptr);
+  ASSERT_NE(top.assign_stmts[0].rhs.rhs, nullptr);
+  EXPECT_EQ(top.assign_stmts[0].rhs.text, "&");
+  EXPECT_EQ(top.assign_stmts[0].rhs.lhs->kind, mnf::Expression::Kind::Identifier);
+  EXPECT_EQ(top.assign_stmts[0].rhs.lhs->text, "in1");
+  EXPECT_EQ(top.assign_stmts[0].rhs.rhs->kind, mnf::Expression::Kind::Identifier);
+  EXPECT_EQ(top.assign_stmts[0].rhs.rhs->text, "in2");
   EXPECT_EQ(top.assign_stmts[1].lhs, "out1");
   EXPECT_EQ(top.assign_stmts[1].rhs.kind, mnf::Expression::Kind::Number);
   EXPECT_EQ(top.assign_stmts[1].rhs.text, "1");

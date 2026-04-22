@@ -21,6 +21,7 @@ enum class TokenKind {
   Semicolon,
   Dot,
   Equal,
+  Ampersand,
   EndOfFile,
   Invalid
 };

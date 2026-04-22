@@ -37,6 +37,28 @@ bool Contains(const std::vector<std::string>& names, const std::string& name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
 
+void ValidateExpression(const Expression& expr,
+                        const std::vector<std::string>& declared_signals,
+                        std::vector<Diagnostic>& diagnostics) {
+  if (expr.kind == Expression::Kind::Identifier) {
+    if (!Contains(declared_signals, expr.text)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Assign source is not declared: " + expr.text,
+                                       expr.location});
+    }
+    return;
+  }
+
+  if (expr.kind == Expression::Kind::Binary) {
+    if (expr.lhs != nullptr) {
+      ValidateExpression(*expr.lhs, declared_signals, diagnostics);
+    }
+    if (expr.rhs != nullptr) {
+      ValidateExpression(*expr.rhs, declared_signals, diagnostics);
+    }
+  }
+}
+
 }  // namespace
 
 std::vector<Diagnostic> SemanticChecker::Check(const Program& program, SymbolTable& symbols) const {
@@ -118,12 +140,7 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                        assign_stmt.location});
     }
 
-    if (assign_stmt.rhs.kind == Expression::Kind::Identifier &&
-        !Contains(declared_signals, assign_stmt.rhs.text)) {
-      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
-                                       "Assign source is not declared: " + assign_stmt.rhs.text,
-                                       assign_stmt.rhs.location});
-    }
+    ValidateExpression(assign_stmt.rhs, declared_signals, diagnostics);
   }
 
   for (const auto& instance : module.instances) {

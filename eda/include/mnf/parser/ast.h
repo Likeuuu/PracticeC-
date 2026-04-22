@@ -30,11 +30,14 @@ struct WireDecl : AstNode {
 struct Expression : AstNode {
   enum class Kind {
     Identifier,
-    Number
+    Number,
+    Binary
   };
 
   Kind kind = Kind::Identifier;
   std::string text;
+  std::unique_ptr<Expression> lhs;
+  std::unique_ptr<Expression> rhs;
 };
 
 struct AssignStmt : AstNode {

@@ -22,6 +22,7 @@ private:
   Result<WireDecl> ParseWireDecl();
   Result<AssignStmt> ParseAssignStmt();
   Result<Expression> ParseExpression();
+  Result<Expression> ParsePrimaryExpression();
   Result<InstanceDecl> ParseInstanceDecl();
   Result<NamedConnection> ParseNamedConnection();
 
