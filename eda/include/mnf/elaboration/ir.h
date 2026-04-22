@@ -27,12 +27,43 @@ struct ModuleDependencyIR {
   std::string to_module;
 };
 
+struct ResolvedNetIR {
+  enum class Kind {
+    Port,
+    Wire
+  };
+
+  int id = -1;
+  std::string name;
+  Kind kind = Kind::Wire;
+};
+
+struct ResolvedAssignIR {
+  int target_net_id = -1;
+  std::vector<int> source_net_ids;
+  std::string expr_op;
+};
+
+struct ResolvedInstanceBindingIR {
+  std::string instance_name;
+  std::string module_name;
+  std::string port_name;
+  int signal_net_id = -1;
+};
+
+struct ResolvedNetGraphIR {
+  std::vector<ResolvedNetIR> nets;
+  std::vector<ResolvedAssignIR> assigns;
+  std::vector<ResolvedInstanceBindingIR> instance_bindings;
+};
+
 struct ElaboratedDesign {
   std::string top_name;
   std::vector<ModuleIR> modules;
   std::vector<ModuleDependencyIR> module_dependencies;
   std::vector<std::string> module_order;
   std::vector<InstanceIR> top_instances;
+  ResolvedNetGraphIR top_graph;
 };
 
 }  // namespace mnf

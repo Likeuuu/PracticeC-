@@ -14,6 +14,16 @@ void WriteInstanceSummary(std::ostringstream& oss, const InstanceIR& instance, i
   }
 }
 
+const char* NetKindToString(ResolvedNetIR::Kind kind) {
+  switch (kind) {
+    case ResolvedNetIR::Kind::Port:
+      return "port";
+    case ResolvedNetIR::Kind::Wire:
+    default:
+      return "wire";
+  }
+}
+
 }  // namespace
 
 std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
@@ -31,6 +41,12 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
     }
     oss << "\n";
   }
+  oss << "Resolved top nets: " << design.top_graph.nets.size() << "\n";
+  for (const auto& net : design.top_graph.nets) {
+    oss << "  net[" << net.id << "] " << net.name << " (" << NetKindToString(net.kind) << ")\n";
+  }
+  oss << "Resolved top assigns: " << design.top_graph.assigns.size() << "\n";
+  oss << "Resolved instance bindings: " << design.top_graph.instance_bindings.size() << "\n";
   oss << "Top instances: " << design.top_instances.size() << "\n";
   for (const auto& instance : design.top_instances) {
     WriteInstanceSummary(oss, instance, 1);

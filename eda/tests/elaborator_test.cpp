@@ -9,7 +9,7 @@
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
 
-TEST(ElaboratorTest, BuildsHierarchyAndModuleDependencyOrder) {
+TEST(ElaboratorTest, BuildsHierarchyAndResolvedTopGraph) {
   const std::string input = R"(module leaf(a, y);
   input a;
   output y;
@@ -21,11 +21,14 @@ module mid(in1, out1);
   leaf u_leaf(.a(in1), .y(out1));
 endmodule
 
-module top(in1, out1);
+module top(in1, in2, out1);
   input in1;
+  input in2;
   output out1;
   wire mid_out;
-  mid u_mid(.in1(in1), .out1(mid_out));
+  wire and_out;
+  assign and_out = in1 & in2;
+  mid u_mid(.in1(and_out), .out1(mid_out));
 endmodule
 )";
 
@@ -54,4 +57,23 @@ endmodule
   ASSERT_EQ(design_result.value->top_instances[0].children.size(), 1u);
   EXPECT_EQ(design_result.value->top_instances[0].children[0].module_name, "leaf");
   EXPECT_EQ(design_result.value->top_instances[0].children[0].instance_name, "u_leaf");
+
+  ASSERT_EQ(design_result.value->top_graph.nets.size(), 5u);
+  EXPECT_EQ(design_result.value->top_graph.nets[0].name, "in1");
+  EXPECT_EQ(design_result.value->top_graph.nets[1].name, "in2");
+  EXPECT_EQ(design_result.value->top_graph.nets[2].name, "out1");
+  EXPECT_EQ(design_result.value->top_graph.nets[3].name, "mid_out");
+  EXPECT_EQ(design_result.value->top_graph.nets[4].name, "and_out");
+
+  ASSERT_EQ(design_result.value->top_graph.assigns.size(), 1u);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].target_net_id, 4);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].expr_op, "&");
+  ASSERT_EQ(design_result.value->top_graph.assigns[0].source_net_ids.size(), 2u);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].source_net_ids[0], 0);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].source_net_ids[1], 1);
+
+  ASSERT_EQ(design_result.value->top_graph.instance_bindings.size(), 2u);
+  EXPECT_EQ(design_result.value->top_graph.instance_bindings[0].instance_name, "u_mid");
+  EXPECT_EQ(design_result.value->top_graph.instance_bindings[0].signal_net_id, 4);
+  EXPECT_EQ(design_result.value->top_graph.instance_bindings[1].signal_net_id, 3);
 }

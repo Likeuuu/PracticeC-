@@ -75,6 +75,77 @@ std::vector<std::string> ComputeModuleOrder(const Program& program,
   return order;
 }
 
+void CollectExpressionSourceNets(const Expression& expr,
+                                 const std::unordered_map<std::string, int>& net_ids,
+                                 std::vector<int>& source_net_ids) {
+  if (expr.kind == Expression::Kind::Identifier) {
+    const auto it = net_ids.find(expr.text);
+    if (it != net_ids.end()) {
+      source_net_ids.push_back(it->second);
+    }
+    return;
+  }
+
+  if (expr.kind == Expression::Kind::Binary) {
+    if (expr.lhs != nullptr) {
+      CollectExpressionSourceNets(*expr.lhs, net_ids, source_net_ids);
+    }
+    if (expr.rhs != nullptr) {
+      CollectExpressionSourceNets(*expr.rhs, net_ids, source_net_ids);
+    }
+  }
+}
+
+ResolvedNetGraphIR BuildTopGraph(const ModuleDecl& top_module) {
+  ResolvedNetGraphIR graph;
+  std::unordered_map<std::string, int> net_ids;
+
+  int next_id = 0;
+  for (const auto& port_name : top_module.ports) {
+    graph.nets.push_back(ResolvedNetIR{next_id, port_name, ResolvedNetIR::Kind::Port});
+    net_ids.emplace(port_name, next_id);
+    ++next_id;
+  }
+
+  for (const auto& wire_decl : top_module.wire_decls) {
+    for (const auto& wire_name : wire_decl.names) {
+      if (net_ids.find(wire_name) != net_ids.end()) {
+        continue;
+      }
+      graph.nets.push_back(ResolvedNetIR{next_id, wire_name, ResolvedNetIR::Kind::Wire});
+      net_ids.emplace(wire_name, next_id);
+      ++next_id;
+    }
+  }
+
+  for (const auto& assign_stmt : top_module.assign_stmts) {
+    ResolvedAssignIR resolved_assign;
+    const auto lhs_it = net_ids.find(assign_stmt.lhs);
+    if (lhs_it != net_ids.end()) {
+      resolved_assign.target_net_id = lhs_it->second;
+    }
+    resolved_assign.expr_op = assign_stmt.rhs.kind == Expression::Kind::Binary ? assign_stmt.rhs.text : "";
+    CollectExpressionSourceNets(assign_stmt.rhs, net_ids, resolved_assign.source_net_ids);
+    graph.assigns.push_back(std::move(resolved_assign));
+  }
+
+  for (const auto& instance : top_module.instances) {
+    for (const auto& connection : instance.connections) {
+      ResolvedInstanceBindingIR binding;
+      binding.instance_name = instance.instance_name;
+      binding.module_name = instance.module_name;
+      binding.port_name = connection.port_name;
+      const auto signal_it = net_ids.find(connection.signal_name);
+      if (signal_it != net_ids.end()) {
+        binding.signal_net_id = signal_it->second;
+      }
+      graph.instance_bindings.push_back(std::move(binding));
+    }
+  }
+
+  return graph;
+}
+
 }  // namespace
 
 Result<ElaboratedDesign> Elaborator::Elaborate(const Program& program,
@@ -101,8 +172,12 @@ Result<ElaboratedDesign> Elaborator::Elaborate(const Program& program,
   const ModuleDecl* top_module = FindTopModule(program, top_name);
   if (top_module == nullptr) {
     return Result<ElaboratedDesign>{std::nullopt,
-                                    {Diagnostic{DiagnosticLevel::Error, "Top module not found: " + top_name, {"", 1, 1}}}};
+                                    {Diagnostic{DiagnosticLevel::Error,
+                                                "Top module not found: " + top_name,
+                                                {"", 1, 1}}}};
   }
+
+  design.top_graph = BuildTopGraph(*top_module);
 
   std::vector<Diagnostic> diagnostics;
   for (const auto& instance : top_module->instances) {

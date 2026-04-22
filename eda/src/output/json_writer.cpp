@@ -69,6 +69,44 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     oss << "\"" << design.module_order[i] << "\"";
   }
   oss << "],\n";
+  oss << "  \"top_graph\": {";
+  oss << "\"nets\": [";
+  for (std::size_t i = 0; i < design.top_graph.nets.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "{\"id\": " << design.top_graph.nets[i].id
+        << ", \"name\": \"" << design.top_graph.nets[i].name
+        << "\", \"kind\": \"" << (design.top_graph.nets[i].kind == ResolvedNetIR::Kind::Port ? "port" : "wire")
+        << "\"}";
+  }
+  oss << "], ";
+  oss << "\"assigns\": [";
+  for (std::size_t i = 0; i < design.top_graph.assigns.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "{\"target\": " << design.top_graph.assigns[i].target_net_id << ", \"sources\": [";
+    for (std::size_t j = 0; j < design.top_graph.assigns[i].source_net_ids.size(); ++j) {
+      if (j != 0) {
+        oss << ", ";
+      }
+      oss << design.top_graph.assigns[i].source_net_ids[j];
+    }
+    oss << "], \"op\": \"" << design.top_graph.assigns[i].expr_op << "\"}";
+  }
+  oss << "], ";
+  oss << "\"instance_bindings\": [";
+  for (std::size_t i = 0; i < design.top_graph.instance_bindings.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "{\"instance\": \"" << design.top_graph.instance_bindings[i].instance_name
+        << "\", \"module\": \"" << design.top_graph.instance_bindings[i].module_name
+        << "\", \"port\": \"" << design.top_graph.instance_bindings[i].port_name
+        << "\", \"signal\": " << design.top_graph.instance_bindings[i].signal_net_id << "}";
+  }
+  oss << "]},\n";
   oss << "  \"top_instances\": [";
   for (std::size_t i = 0; i < design.top_instances.size(); ++i) {
     if (i != 0) {
