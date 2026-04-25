@@ -41,12 +41,29 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
     }
     oss << "\n";
   }
-  oss << "Resolved top nets: " << design.top_graph.nets.size() << "\n";
+  oss << "Resolved hierarchical nets: " << design.top_graph.nets.size() << "\n";
   for (const auto& net : design.top_graph.nets) {
-    oss << "  net[" << net.id << "] " << net.name << " (" << NetKindToString(net.kind) << ")\n";
+    oss << "  net[" << net.id << "] " << net.qualified_name << " (" << NetKindToString(net.kind) << ")\n";
   }
-  oss << "Resolved top assigns: " << design.top_graph.assigns.size() << "\n";
-  oss << "Resolved instance bindings: " << design.top_graph.instance_bindings.size() << "\n";
+  oss << "Resolved hierarchical assigns: " << design.top_graph.assigns.size() << "\n";
+  for (const auto& assign : design.top_graph.assigns) {
+    oss << "  assign@" << (assign.instance_path.empty() ? "<top>" : assign.instance_path)
+        << " target=" << assign.target_net_id << " sources=";
+    for (std::size_t i = 0; i < assign.source_net_ids.size(); ++i) {
+      if (i != 0) {
+        oss << ",";
+      }
+      oss << assign.source_net_ids[i];
+    }
+    if (!assign.expr_op.empty()) {
+      oss << " op=" << assign.expr_op;
+    }
+    oss << "\n";
+  }
+  oss << "Resolved hierarchical instance bindings: " << design.top_graph.instance_bindings.size() << "\n";
+  for (const auto& binding : design.top_graph.instance_bindings) {
+    oss << "  bind@" << binding.instance_path << " " << binding.port_name << " -> net[" << binding.signal_net_id << "]\n";
+  }
   oss << "Top instances: " << design.top_instances.size() << "\n";
   for (const auto& instance : design.top_instances) {
     WriteInstanceSummary(oss, instance, 1);

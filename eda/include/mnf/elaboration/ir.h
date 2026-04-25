@@ -35,17 +35,19 @@ struct ResolvedNetIR {
 
   int id = -1;
   std::string name;
+  std::string qualified_name;
   Kind kind = Kind::Wire;
 };
 
 struct ResolvedAssignIR {
+  std::string instance_path;
   int target_net_id = -1;
   std::vector<int> source_net_ids;
   std::string expr_op;
 };
 
 struct ResolvedInstanceBindingIR {
-  std::string instance_name;
+  std::string instance_path;
   std::string module_name;
   std::string port_name;
   int signal_net_id = -1;

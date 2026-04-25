@@ -77,6 +77,7 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     }
     oss << "{\"id\": " << design.top_graph.nets[i].id
         << ", \"name\": \"" << design.top_graph.nets[i].name
+        << "\", \"qualified_name\": \"" << design.top_graph.nets[i].qualified_name
         << "\", \"kind\": \"" << (design.top_graph.nets[i].kind == ResolvedNetIR::Kind::Port ? "port" : "wire")
         << "\"}";
   }
@@ -86,7 +87,8 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     if (i != 0) {
       oss << ", ";
     }
-    oss << "{\"target\": " << design.top_graph.assigns[i].target_net_id << ", \"sources\": [";
+    oss << "{\"instance_path\": \"" << design.top_graph.assigns[i].instance_path
+        << "\", \"target\": " << design.top_graph.assigns[i].target_net_id << ", \"sources\": [";
     for (std::size_t j = 0; j < design.top_graph.assigns[i].source_net_ids.size(); ++j) {
       if (j != 0) {
         oss << ", ";
@@ -101,7 +103,7 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     if (i != 0) {
       oss << ", ";
     }
-    oss << "{\"instance\": \"" << design.top_graph.instance_bindings[i].instance_name
+    oss << "{\"instance_path\": \"" << design.top_graph.instance_bindings[i].instance_path
         << "\", \"module\": \"" << design.top_graph.instance_bindings[i].module_name
         << "\", \"port\": \"" << design.top_graph.instance_bindings[i].port_name
         << "\", \"signal\": " << design.top_graph.instance_bindings[i].signal_net_id << "}";

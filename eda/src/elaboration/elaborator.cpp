@@ -12,6 +12,12 @@ namespace mnf {
 
 namespace {
 
+struct ScopeState {
+  std::string instance_path;
+  const ModuleDecl* module = nullptr;
+  std::unordered_map<std::string, int> visible_net_ids;
+};
+
 const ModuleDecl* FindTopModule(const Program& program, const std::string& top_name) {
   for (const auto& module : program.modules) {
     if (module->name == top_name) {
@@ -96,53 +102,90 @@ void CollectExpressionSourceNets(const Expression& expr,
   }
 }
 
-ResolvedNetGraphIR BuildTopGraph(const ModuleDecl& top_module) {
-  ResolvedNetGraphIR graph;
-  std::unordered_map<std::string, int> net_ids;
+std::string JoinPath(const std::string& instance_path, const std::string& local_name) {
+  return instance_path.empty() ? local_name : instance_path + "." + local_name;
+}
 
-  int next_id = 0;
-  for (const auto& port_name : top_module.ports) {
-    graph.nets.push_back(ResolvedNetIR{next_id, port_name, ResolvedNetIR::Kind::Port});
-    net_ids.emplace(port_name, next_id);
-    ++next_id;
-  }
-
-  for (const auto& wire_decl : top_module.wire_decls) {
+void AddLocalWiresToScope(const ModuleDecl& module,
+                          const std::string& instance_path,
+                          int* next_net_id,
+                          ScopeState* scope,
+                          ResolvedNetGraphIR* graph) {
+  for (const auto& wire_decl : module.wire_decls) {
     for (const auto& wire_name : wire_decl.names) {
-      if (net_ids.find(wire_name) != net_ids.end()) {
+      if (scope->visible_net_ids.find(wire_name) != scope->visible_net_ids.end()) {
         continue;
       }
-      graph.nets.push_back(ResolvedNetIR{next_id, wire_name, ResolvedNetIR::Kind::Wire});
-      net_ids.emplace(wire_name, next_id);
-      ++next_id;
+      const int net_id = (*next_net_id)++;
+      scope->visible_net_ids.emplace(wire_name, net_id);
+      graph->nets.push_back(ResolvedNetIR{net_id, wire_name, JoinPath(instance_path, wire_name), ResolvedNetIR::Kind::Wire});
     }
   }
+}
 
-  for (const auto& assign_stmt : top_module.assign_stmts) {
+void BuildResolvedGraphRecursive(const SymbolTable& symbols,
+                                 ScopeState scope,
+                                 int* next_net_id,
+                                 ResolvedNetGraphIR* graph) {
+  AddLocalWiresToScope(*scope.module, scope.instance_path, next_net_id, &scope, graph);
+
+  for (const auto& assign_stmt : scope.module->assign_stmts) {
     ResolvedAssignIR resolved_assign;
-    const auto lhs_it = net_ids.find(assign_stmt.lhs);
-    if (lhs_it != net_ids.end()) {
+    resolved_assign.instance_path = scope.instance_path;
+    const auto lhs_it = scope.visible_net_ids.find(assign_stmt.lhs);
+    if (lhs_it != scope.visible_net_ids.end()) {
       resolved_assign.target_net_id = lhs_it->second;
     }
     resolved_assign.expr_op = assign_stmt.rhs.kind == Expression::Kind::Binary ? assign_stmt.rhs.text : "";
-    CollectExpressionSourceNets(assign_stmt.rhs, net_ids, resolved_assign.source_net_ids);
-    graph.assigns.push_back(std::move(resolved_assign));
+    CollectExpressionSourceNets(assign_stmt.rhs, scope.visible_net_ids, resolved_assign.source_net_ids);
+    graph->assigns.push_back(std::move(resolved_assign));
   }
 
-  for (const auto& instance : top_module.instances) {
-    for (const auto& connection : instance.connections) {
-      ResolvedInstanceBindingIR binding;
-      binding.instance_name = instance.instance_name;
-      binding.module_name = instance.module_name;
-      binding.port_name = connection.port_name;
-      const auto signal_it = net_ids.find(connection.signal_name);
-      if (signal_it != net_ids.end()) {
-        binding.signal_net_id = signal_it->second;
-      }
-      graph.instance_bindings.push_back(std::move(binding));
+  for (const auto& instance : scope.module->instances) {
+    const ModuleDecl* referenced_module = symbols.FindModule(instance.module_name);
+    if (referenced_module == nullptr) {
+      continue;
     }
+
+    ScopeState child_scope;
+    child_scope.instance_path = JoinPath(scope.instance_path, instance.instance_name);
+    child_scope.module = referenced_module;
+
+    for (const auto& port_name : referenced_module->ports) {
+      child_scope.visible_net_ids.emplace(port_name, -1);
+    }
+
+    for (const auto& connection : instance.connections) {
+      const auto signal_it = scope.visible_net_ids.find(connection.signal_name);
+      if (signal_it == scope.visible_net_ids.end()) {
+        continue;
+      }
+
+      child_scope.visible_net_ids[connection.port_name] = signal_it->second;
+      graph->instance_bindings.push_back(ResolvedInstanceBindingIR{
+          child_scope.instance_path,
+          instance.module_name,
+          connection.port_name,
+          signal_it->second});
+    }
+
+    BuildResolvedGraphRecursive(symbols, child_scope, next_net_id, graph);
+  }
+}
+
+ResolvedNetGraphIR BuildResolvedGraph(const SymbolTable& symbols, const ModuleDecl& top_module) {
+  ResolvedNetGraphIR graph;
+  ScopeState top_scope;
+  top_scope.module = &top_module;
+
+  int next_net_id = 0;
+  for (const auto& port_name : top_module.ports) {
+    top_scope.visible_net_ids.emplace(port_name, next_net_id);
+    graph.nets.push_back(ResolvedNetIR{next_net_id, port_name, port_name, ResolvedNetIR::Kind::Port});
+    ++next_net_id;
   }
 
+  BuildResolvedGraphRecursive(symbols, top_scope, &next_net_id, &graph);
   return graph;
 }
 
@@ -177,7 +220,7 @@ Result<ElaboratedDesign> Elaborator::Elaborate(const Program& program,
                                                 {"", 1, 1}}}};
   }
 
-  design.top_graph = BuildTopGraph(*top_module);
+  design.top_graph = BuildResolvedGraph(symbols, *top_module);
 
   std::vector<Diagnostic> diagnostics;
   for (const auto& instance : top_module->instances) {

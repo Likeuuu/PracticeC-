@@ -57,7 +57,7 @@ struct InstanceDecl : AstNode {
 };
 
 struct ModuleDecl : AstNode {
-  std::string name;
+  std::string name; // module name
   std::vector<std::string> ports;
   std::vector<PortDecl> port_decls;
   std::vector<WireDecl> wire_decls;
