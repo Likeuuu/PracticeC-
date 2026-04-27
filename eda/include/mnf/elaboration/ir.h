@@ -44,6 +44,8 @@ struct ResolvedAssignIR {
   int target_net_id = -1;
   std::vector<int> source_net_ids;
   std::string expr_op;
+  bool has_constant_value = false;
+  int constant_value = 0;
 };
 
 struct ResolvedInstanceBindingIR {

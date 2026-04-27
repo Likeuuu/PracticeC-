@@ -18,6 +18,7 @@ add_library(mnf
     src/elaboration/elaborator.cpp
     src/output/json_writer.cpp
     src/output/text_writer.cpp
+    src/sim/combinational_evaluator.cpp
     src/app/cli.cpp
 )
 
@@ -63,6 +64,7 @@ if(MNF_BUILD_TESTS)
         tests/semantic_checker_repeat_wires_test.cpp
         tests/elaborator_test.cpp
         tests/elaboration_cycle_test.cpp
+        tests/sim/combinational_evaluator_test.cpp
     )
 
     target_link_libraries(mnf_tests PRIVATE mnf GTest::gtest_main)

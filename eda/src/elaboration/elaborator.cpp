@@ -137,6 +137,10 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
       resolved_assign.target_net_id = lhs_it->second;
     }
     resolved_assign.expr_op = assign_stmt.rhs.kind == Expression::Kind::Binary ? assign_stmt.rhs.text : "";
+    if (assign_stmt.rhs.kind == Expression::Kind::Number) {
+      resolved_assign.has_constant_value = true;
+      resolved_assign.constant_value = std::stoi(assign_stmt.rhs.text);
+    }
     CollectExpressionSourceNets(assign_stmt.rhs, scope.visible_net_ids, resolved_assign.source_net_ids);
     graph->assigns.push_back(std::move(resolved_assign));
   }
