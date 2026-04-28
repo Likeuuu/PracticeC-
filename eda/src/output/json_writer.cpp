@@ -31,6 +31,32 @@ void WriteInstance(std::ostringstream& oss, const InstanceIR& instance) {
   oss << "}";
 }
 
+void WriteResolvedExpr(std::ostringstream& oss, const ResolvedExprIR& expr) {
+  switch (expr.kind) {
+    case ResolvedExprIR::Kind::Net:
+      oss << "{\"kind\": \"net\", \"net\": " << expr.net_id << "}";
+      return;
+    case ResolvedExprIR::Kind::Constant:
+      oss << "{\"kind\": \"constant\", \"value\": " << expr.constant_value << "}";
+      return;
+    case ResolvedExprIR::Kind::Binary:
+      oss << "{\"kind\": \"binary\", \"op\": \"" << expr.op << "\", \"lhs\": ";
+      if (expr.lhs != nullptr) {
+        WriteResolvedExpr(oss, *expr.lhs);
+      } else {
+        oss << "null";
+      }
+      oss << ", \"rhs\": ";
+      if (expr.rhs != nullptr) {
+        WriteResolvedExpr(oss, *expr.rhs);
+      } else {
+        oss << "null";
+      }
+      oss << "}";
+      return;
+  }
+}
+
 }  // namespace
 
 std::string JsonWriter::Write(const ElaboratedDesign& design) const {
@@ -88,14 +114,9 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
       oss << ", ";
     }
     oss << "{\"instance_path\": \"" << design.top_graph.assigns[i].instance_path
-        << "\", \"target\": " << design.top_graph.assigns[i].target_net_id << ", \"sources\": [";
-    for (std::size_t j = 0; j < design.top_graph.assigns[i].source_net_ids.size(); ++j) {
-      if (j != 0) {
-        oss << ", ";
-      }
-      oss << design.top_graph.assigns[i].source_net_ids[j];
-    }
-    oss << "], \"op\": \"" << design.top_graph.assigns[i].expr_op << "\"}";
+        << "\", \"target\": " << design.top_graph.assigns[i].target_net_id << ", \"expr\": ";
+    WriteResolvedExpr(oss, design.top_graph.assigns[i].rhs_expr);
+    oss << "}";
   }
   oss << "], ";
   oss << "\"instance_bindings\": [";

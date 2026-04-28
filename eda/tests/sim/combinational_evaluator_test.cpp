@@ -103,3 +103,41 @@ endmodule
   ASSERT_TRUE(result.Ok());
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
 }
+
+TEST(CombinationalEvaluatorTest, EvaluatesNestedAndExpressions) {
+  const std::string input = R"(module top(in1, in2, in3, out1);
+  input in1;
+  input in2;
+  input in3;
+  output out1;
+  assign out1 = in1 & in2 & in3;
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+
+  const auto result_zero = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 1}, {"in3", 0}});
+  ASSERT_TRUE(result_zero.Ok());
+  EXPECT_EQ(NetValueByName(result_zero, design.top_graph, "out1"), 0);
+
+  const auto result_one = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 1}, {"in3", 1}});
+  ASSERT_TRUE(result_one.Ok());
+  EXPECT_EQ(NetValueByName(result_one, design.top_graph, "out1"), 1);
+}
+
+TEST(CombinationalEvaluatorTest, EvaluatesBinaryExpressionsWithConstants) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  assign out1 = in1 & 1;
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+  const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}});
+
+  ASSERT_TRUE(result.Ok());
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
+}

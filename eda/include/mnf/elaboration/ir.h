@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -39,13 +40,54 @@ struct ResolvedNetIR {
   Kind kind = Kind::Wire;
 };
 
+struct ResolvedExprIR {
+  enum class Kind {
+    Net,
+    Constant,
+    Binary
+  };
+
+  Kind kind = Kind::Net;
+  int net_id = -1;
+  int constant_value = 0;
+  std::string op;
+  std::unique_ptr<ResolvedExprIR> lhs;
+  std::unique_ptr<ResolvedExprIR> rhs;
+
+  ResolvedExprIR() = default;
+
+  ResolvedExprIR(const ResolvedExprIR& other)
+      : kind(other.kind), net_id(other.net_id), constant_value(other.constant_value), op(other.op) {
+    if (other.lhs != nullptr) {
+      lhs = std::make_unique<ResolvedExprIR>(*other.lhs);
+    }
+    if (other.rhs != nullptr) {
+      rhs = std::make_unique<ResolvedExprIR>(*other.rhs);
+    }
+  }
+
+  ResolvedExprIR& operator=(const ResolvedExprIR& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    kind = other.kind;
+    net_id = other.net_id;
+    constant_value = other.constant_value;
+    op = other.op;
+    lhs = other.lhs != nullptr ? std::make_unique<ResolvedExprIR>(*other.lhs) : nullptr;
+    rhs = other.rhs != nullptr ? std::make_unique<ResolvedExprIR>(*other.rhs) : nullptr;
+    return *this;
+  }
+
+  ResolvedExprIR(ResolvedExprIR&&) noexcept = default;
+  ResolvedExprIR& operator=(ResolvedExprIR&&) noexcept = default;
+};
+
 struct ResolvedAssignIR {
   std::string instance_path;
   int target_net_id = -1;
-  std::vector<int> source_net_ids;
-  std::string expr_op;
-  bool has_constant_value = false;
-  int constant_value = 0;
+  ResolvedExprIR rhs_expr;
 };
 
 struct ResolvedInstanceBindingIR {

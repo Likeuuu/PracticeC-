@@ -81,25 +81,34 @@ std::vector<std::string> ComputeModuleOrder(const Program& program,
   return order;
 }
 
-void CollectExpressionSourceNets(const Expression& expr,
-                                 const std::unordered_map<std::string, int>& net_ids,
-                                 std::vector<int>& source_net_ids) {
+ResolvedExprIR ResolveExpression(const Expression& expr,
+                                 const std::unordered_map<std::string, int>& net_ids) {
+  ResolvedExprIR resolved_expr;
+
   if (expr.kind == Expression::Kind::Identifier) {
+    resolved_expr.kind = ResolvedExprIR::Kind::Net;
     const auto it = net_ids.find(expr.text);
     if (it != net_ids.end()) {
-      source_net_ids.push_back(it->second);
+      resolved_expr.net_id = it->second;
     }
-    return;
+    return resolved_expr;
   }
 
-  if (expr.kind == Expression::Kind::Binary) {
-    if (expr.lhs != nullptr) {
-      CollectExpressionSourceNets(*expr.lhs, net_ids, source_net_ids);
-    }
-    if (expr.rhs != nullptr) {
-      CollectExpressionSourceNets(*expr.rhs, net_ids, source_net_ids);
-    }
+  if (expr.kind == Expression::Kind::Number) {
+    resolved_expr.kind = ResolvedExprIR::Kind::Constant;
+    resolved_expr.constant_value = std::stoi(expr.text);
+    return resolved_expr;
   }
+
+  resolved_expr.kind = ResolvedExprIR::Kind::Binary;
+  resolved_expr.op = expr.text;
+  if (expr.lhs != nullptr) {
+    resolved_expr.lhs = std::make_unique<ResolvedExprIR>(ResolveExpression(*expr.lhs, net_ids));
+  }
+  if (expr.rhs != nullptr) {
+    resolved_expr.rhs = std::make_unique<ResolvedExprIR>(ResolveExpression(*expr.rhs, net_ids));
+  }
+  return resolved_expr;
 }
 
 std::string JoinPath(const std::string& instance_path, const std::string& local_name) {
@@ -136,12 +145,7 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
     if (lhs_it != scope.visible_net_ids.end()) {
       resolved_assign.target_net_id = lhs_it->second;
     }
-    resolved_assign.expr_op = assign_stmt.rhs.kind == Expression::Kind::Binary ? assign_stmt.rhs.text : "";
-    if (assign_stmt.rhs.kind == Expression::Kind::Number) {
-      resolved_assign.has_constant_value = true;
-      resolved_assign.constant_value = std::stoi(assign_stmt.rhs.text);
-    }
-    CollectExpressionSourceNets(assign_stmt.rhs, scope.visible_net_ids, resolved_assign.source_net_ids);
+    resolved_assign.rhs_expr = ResolveExpression(assign_stmt.rhs, scope.visible_net_ids);
     graph->assigns.push_back(std::move(resolved_assign));
   }
 

@@ -16,6 +16,48 @@ Diagnostic MakeEvalError(const std::string& message) {
   return Diagnostic{DiagnosticLevel::Error, message, {"", 1, 1}};
 }
 
+int EvaluateExpr(const ResolvedExprIR& expr,
+                 const std::vector<int>& net_values,
+                 std::vector<Diagnostic>* diagnostics) {
+  switch (expr.kind) {
+    case ResolvedExprIR::Kind::Net:
+      if (expr.net_id < 0 || static_cast<std::size_t>(expr.net_id) >= net_values.size()) {
+        diagnostics->push_back(MakeEvalError("Resolved net id is invalid in expression"));
+        return kUnknown;
+      }
+      return net_values[static_cast<std::size_t>(expr.net_id)];
+
+    case ResolvedExprIR::Kind::Constant:
+      if (!IsBitValue(expr.constant_value)) {
+        diagnostics->push_back(MakeEvalError("Only 0/1 constants are supported in combinational evaluation"));
+        return kUnknown;
+      }
+      return expr.constant_value;
+
+    case ResolvedExprIR::Kind::Binary:
+      if (expr.lhs == nullptr || expr.rhs == nullptr) {
+        diagnostics->push_back(MakeEvalError("Binary expression is incomplete"));
+        return kUnknown;
+      }
+      if (expr.op != "&") {
+        diagnostics->push_back(MakeEvalError("Unsupported binary operator: " + expr.op));
+        return kUnknown;
+      }
+
+      {
+        const int lhs_value = EvaluateExpr(*expr.lhs, net_values, diagnostics);
+        const int rhs_value = EvaluateExpr(*expr.rhs, net_values, diagnostics);
+        if (lhs_value == kUnknown || rhs_value == kUnknown) {
+          return kUnknown;
+        }
+        return lhs_value & rhs_value;
+      }
+  }
+
+  diagnostics->push_back(MakeEvalError("Unsupported resolved expression kind"));
+  return kUnknown;
+}
+
 }  // namespace
 
 CombinationalEvalResult CombinationalEvaluator::Evaluate(
@@ -49,42 +91,7 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
         continue;
       }
 
-      int value = kUnknown;
-      if (assign.has_constant_value) {
-        value = assign.constant_value == 0 ? 0 : 1;
-      } else if (assign.expr_op.empty()) {
-        if (assign.source_net_ids.size() != 1) {
-          continue;
-        }
-        const int source_id = assign.source_net_ids[0];
-        if (source_id < 0 || static_cast<std::size_t>(source_id) >= result.net_values.size()) {
-          result.diagnostics.push_back(MakeEvalError("Assign source net id is invalid"));
-          continue;
-        }
-        value = result.net_values[static_cast<std::size_t>(source_id)];
-      } else if (assign.expr_op == "&") {
-        if (assign.source_net_ids.size() != 2) {
-          continue;
-        }
-        const int lhs_id = assign.source_net_ids[0];
-        const int rhs_id = assign.source_net_ids[1];
-        if (lhs_id < 0 || rhs_id < 0 ||
-            static_cast<std::size_t>(lhs_id) >= result.net_values.size() ||
-            static_cast<std::size_t>(rhs_id) >= result.net_values.size()) {
-          result.diagnostics.push_back(MakeEvalError("Binary assign source net id is invalid"));
-          continue;
-        }
-        const int lhs = result.net_values[static_cast<std::size_t>(lhs_id)];
-        const int rhs = result.net_values[static_cast<std::size_t>(rhs_id)];
-        if (lhs == kUnknown || rhs == kUnknown) {
-          continue;
-        }
-        value = lhs & rhs;
-      } else {
-        result.diagnostics.push_back(MakeEvalError("Unsupported assign operator: " + assign.expr_op));
-        continue;
-      }
-
+      const int value = EvaluateExpr(assign.rhs_expr, result.net_values, &result.diagnostics);
       if (value == kUnknown) {
         continue;
       }

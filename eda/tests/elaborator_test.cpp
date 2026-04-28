@@ -71,20 +71,24 @@ endmodule
   ASSERT_EQ(design_result.value->top_graph.assigns.size(), 3u);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].instance_path, "");
   EXPECT_EQ(design_result.value->top_graph.assigns[0].target_net_id, 4);
-  EXPECT_EQ(design_result.value->top_graph.assigns[0].expr_op, "&");
-  ASSERT_EQ(design_result.value->top_graph.assigns[0].source_net_ids.size(), 2u);
-  EXPECT_EQ(design_result.value->top_graph.assigns[0].source_net_ids[0], 0);
-  EXPECT_EQ(design_result.value->top_graph.assigns[0].source_net_ids[1], 1);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Binary);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.op, "&");
+  ASSERT_NE(design_result.value->top_graph.assigns[0].rhs_expr.lhs, nullptr);
+  ASSERT_NE(design_result.value->top_graph.assigns[0].rhs_expr.rhs, nullptr);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.lhs->kind, mnf::ResolvedExprIR::Kind::Net);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.lhs->net_id, 0);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.rhs->kind, mnf::ResolvedExprIR::Kind::Net);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.rhs->net_id, 1);
 
   EXPECT_EQ(design_result.value->top_graph.assigns[1].instance_path, "u_mid");
   EXPECT_EQ(design_result.value->top_graph.assigns[1].target_net_id, 5);
-  ASSERT_EQ(design_result.value->top_graph.assigns[1].source_net_ids.size(), 1u);
-  EXPECT_EQ(design_result.value->top_graph.assigns[1].source_net_ids[0], 4);
+  EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
+  EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.net_id, 4);
 
   EXPECT_EQ(design_result.value->top_graph.assigns[2].instance_path, "u_mid.u_leaf");
   EXPECT_EQ(design_result.value->top_graph.assigns[2].target_net_id, 6);
-  ASSERT_EQ(design_result.value->top_graph.assigns[2].source_net_ids.size(), 1u);
-  EXPECT_EQ(design_result.value->top_graph.assigns[2].source_net_ids[0], 5);
+  EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
+  EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.net_id, 5);
 
   ASSERT_EQ(design_result.value->top_graph.instance_bindings.size(), 4u);
   EXPECT_EQ(design_result.value->top_graph.instance_bindings[0].instance_path, "u_mid");

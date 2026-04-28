@@ -24,6 +24,22 @@ const char* NetKindToString(ResolvedNetIR::Kind kind) {
   }
 }
 
+std::string FormatResolvedExpr(const ResolvedExprIR& expr) {
+  switch (expr.kind) {
+    case ResolvedExprIR::Kind::Net:
+      return "net[" + std::to_string(expr.net_id) + "]";
+    case ResolvedExprIR::Kind::Constant:
+      return std::to_string(expr.constant_value);
+    case ResolvedExprIR::Kind::Binary: {
+      const std::string lhs = expr.lhs != nullptr ? FormatResolvedExpr(*expr.lhs) : "<null>";
+      const std::string rhs = expr.rhs != nullptr ? FormatResolvedExpr(*expr.rhs) : "<null>";
+      return "(" + lhs + " " + expr.op + " " + rhs + ")";
+    }
+  }
+
+  return "<expr?>";
+}
+
 }  // namespace
 
 std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
@@ -48,17 +64,9 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
   oss << "Resolved hierarchical assigns: " << design.top_graph.assigns.size() << "\n";
   for (const auto& assign : design.top_graph.assigns) {
     oss << "  assign@" << (assign.instance_path.empty() ? "<top>" : assign.instance_path)
-        << " target=" << assign.target_net_id << " sources=";
-    for (std::size_t i = 0; i < assign.source_net_ids.size(); ++i) {
-      if (i != 0) {
-        oss << ",";
-      }
-      oss << assign.source_net_ids[i];
-    }
-    if (!assign.expr_op.empty()) {
-      oss << " op=" << assign.expr_op;
-    }
-    oss << "\n";
+        << " target=" << assign.target_net_id
+        << " expr=" << FormatResolvedExpr(assign.rhs_expr)
+        << "\n";
   }
   oss << "Resolved hierarchical instance bindings: " << design.top_graph.instance_bindings.size() << "\n";
   for (const auto& binding : design.top_graph.instance_bindings) {
