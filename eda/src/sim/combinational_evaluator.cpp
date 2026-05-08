@@ -18,31 +18,6 @@ Diagnostic MakeEvalError(const std::string& message) {
   return Diagnostic{DiagnosticLevel::Error, message, {"", 1, 1}};
 }
 
-void CollectReferencedNetIds(const ResolvedExprIR& expr, std::vector<int>* net_ids) {
-  switch (expr.kind) {
-    case ResolvedExprIR::Kind::Net:
-      if (expr.net_id >= 0) {
-        net_ids->push_back(expr.net_id);
-      }
-      return;
-    case ResolvedExprIR::Kind::Constant:
-      return;
-    case ResolvedExprIR::Kind::Unary:
-      if (expr.rhs != nullptr) {
-        CollectReferencedNetIds(*expr.rhs, net_ids);
-      }
-      return;
-    case ResolvedExprIR::Kind::Binary:
-      if (expr.lhs != nullptr) {
-        CollectReferencedNetIds(*expr.lhs, net_ids);
-      }
-      if (expr.rhs != nullptr) {
-        CollectReferencedNetIds(*expr.rhs, net_ids);
-      }
-      return;
-  }
-}
-
 int EvaluateExpr(const ResolvedExprIR& expr,
                  const std::vector<int>& net_values,
                  std::vector<Diagnostic>* diagnostics) {
@@ -128,11 +103,8 @@ std::vector<int> BuildEvaluationOrder(const ResolvedNetGraphIR& graph,
   }
 
   for (std::size_t i = 0; i < graph.assigns.size(); ++i) {
-    std::vector<int> referenced_net_ids;
-    CollectReferencedNetIds(graph.assigns[i].rhs_expr, &referenced_net_ids);
-
     std::unordered_set<int> seen_dependencies;
-    for (const int net_id : referenced_net_ids) {
+    for (const int net_id : graph.assigns[i].source_net_ids) {
       const auto it = target_to_assign.find(net_id);
       if (it == target_to_assign.end()) {
         continue;

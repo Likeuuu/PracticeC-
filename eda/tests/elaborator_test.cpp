@@ -2,12 +2,24 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "mnf/elaboration/elaborator.h"
 #include "mnf/lexer/lexer.h"
 #include "mnf/parser/parser.h"
 #include "mnf/semantic/semantic_checker.h"
 #include "mnf/semantic/symbol_table.h"
+
+namespace {
+
+void ExpectNetIds(const std::vector<int>& actual, const std::vector<int>& expected) {
+  ASSERT_EQ(actual.size(), expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(actual[i], expected[i]);
+  }
+}
+
+}  // namespace
 
 TEST(ElaboratorTest, BuildsHierarchyAndResolvedTopGraph) {
   const std::string input = R"(module leaf(a, y);
@@ -79,16 +91,19 @@ endmodule
   EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.lhs->net_id, 0);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.rhs->kind, mnf::ResolvedExprIR::Kind::Net);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.rhs->net_id, 1);
+  ExpectNetIds(design_result.value->top_graph.assigns[0].source_net_ids, {0, 1});
 
   EXPECT_EQ(design_result.value->top_graph.assigns[1].instance_path, "u_mid");
   EXPECT_EQ(design_result.value->top_graph.assigns[1].target_net_id, 5);
   EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
   EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.net_id, 4);
+  ExpectNetIds(design_result.value->top_graph.assigns[1].source_net_ids, {4});
 
   EXPECT_EQ(design_result.value->top_graph.assigns[2].instance_path, "u_mid.u_leaf");
   EXPECT_EQ(design_result.value->top_graph.assigns[2].target_net_id, 6);
   EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
   EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.net_id, 5);
+  ExpectNetIds(design_result.value->top_graph.assigns[2].source_net_ids, {5});
 
   ASSERT_EQ(design_result.value->top_graph.instance_bindings.size(), 4u);
   EXPECT_EQ(design_result.value->top_graph.instance_bindings[0].instance_path, "u_mid");

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -81,6 +82,46 @@ std::vector<std::string> ComputeModuleOrder(const Program& program,
   return order;
 }
 
+void CollectSourceNetIdsFromExpr(const ResolvedExprIR& expr, std::vector<int>* source_net_ids) {
+  switch (expr.kind) {
+    case ResolvedExprIR::Kind::Net:
+      if (expr.net_id >= 0) {
+        source_net_ids->push_back(expr.net_id);
+      }
+      return;
+    case ResolvedExprIR::Kind::Constant:
+      return;
+    case ResolvedExprIR::Kind::Unary:
+      if (expr.rhs != nullptr) {
+        CollectSourceNetIdsFromExpr(*expr.rhs, source_net_ids);
+      }
+      return;
+    case ResolvedExprIR::Kind::Binary:
+      if (expr.lhs != nullptr) {
+        CollectSourceNetIdsFromExpr(*expr.lhs, source_net_ids);
+      }
+      if (expr.rhs != nullptr) {
+        CollectSourceNetIdsFromExpr(*expr.rhs, source_net_ids);
+      }
+      return;
+  }
+}
+
+std::vector<int> BuildSourceNetIds(const ResolvedExprIR& expr) {
+  std::vector<int> source_net_ids;
+  CollectSourceNetIdsFromExpr(expr, &source_net_ids);
+
+  std::unordered_set<int> seen;
+  std::vector<int> unique_ids;
+  unique_ids.reserve(source_net_ids.size());
+  for (const int net_id : source_net_ids) {
+    if (seen.insert(net_id).second) {
+      unique_ids.push_back(net_id);
+    }
+  }
+  return unique_ids;
+}
+
 ResolvedExprIR ResolveExpression(const Expression& expr,
                                  const std::unordered_map<std::string, int>& net_ids) {
   ResolvedExprIR resolved_expr;
@@ -155,6 +196,7 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
       resolved_assign.target_net_id = lhs_it->second;
     }
     resolved_assign.rhs_expr = ResolveExpression(assign_stmt.rhs, scope.visible_net_ids);
+    resolved_assign.source_net_ids = BuildSourceNetIds(resolved_assign.rhs_expr);
     graph->assigns.push_back(std::move(resolved_assign));
   }
 

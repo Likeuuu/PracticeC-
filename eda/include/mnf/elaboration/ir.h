@@ -89,6 +89,7 @@ struct ResolvedAssignIR {
   std::string instance_path;
   int target_net_id = -1;
   ResolvedExprIR rhs_expr;
+  std::vector<int> source_net_ids;
 };
 
 struct ResolvedInstanceBindingIR {
