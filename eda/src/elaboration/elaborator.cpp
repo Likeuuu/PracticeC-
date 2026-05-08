@@ -100,6 +100,15 @@ ResolvedExprIR ResolveExpression(const Expression& expr,
     return resolved_expr;
   }
 
+  if (expr.kind == Expression::Kind::Unary) {
+    resolved_expr.kind = ResolvedExprIR::Kind::Unary;
+    resolved_expr.op = expr.text;
+    if (expr.rhs != nullptr) {
+      resolved_expr.rhs = std::make_unique<ResolvedExprIR>(ResolveExpression(*expr.rhs, net_ids));
+    }
+    return resolved_expr;
+  }
+
   resolved_expr.kind = ResolvedExprIR::Kind::Binary;
   resolved_expr.op = expr.text;
   if (expr.lhs != nullptr) {

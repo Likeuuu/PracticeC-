@@ -50,6 +50,12 @@ const char* ToString(TokenKind kind) {
       return "Equal";
     case TokenKind::Ampersand:
       return "Ampersand";
+    case TokenKind::Pipe:
+      return "Pipe";
+    case TokenKind::Caret:
+      return "Caret";
+    case TokenKind::Tilde:
+      return "Tilde";
     case TokenKind::EndOfFile:
       return "EndOfFile";
     case TokenKind::Invalid:
@@ -107,6 +113,12 @@ Token Lexer::LexToken() {
       return MakeToken(TokenKind::Equal, "=", file_name_, start_line, start_column);
     case '&':
       return MakeToken(TokenKind::Ampersand, "&", file_name_, start_line, start_column);
+    case '|':
+      return MakeToken(TokenKind::Pipe, "|", file_name_, start_line, start_column);
+    case '^':
+      return MakeToken(TokenKind::Caret, "^", file_name_, start_line, start_column);
+    case '~':
+      return MakeToken(TokenKind::Tilde, "~", file_name_, start_line, start_column);
     default:
       break;
   }

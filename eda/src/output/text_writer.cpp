@@ -30,6 +30,10 @@ std::string FormatResolvedExpr(const ResolvedExprIR& expr) {
       return "net[" + std::to_string(expr.net_id) + "]";
     case ResolvedExprIR::Kind::Constant:
       return std::to_string(expr.constant_value);
+    case ResolvedExprIR::Kind::Unary: {
+      const std::string rhs = expr.rhs != nullptr ? FormatResolvedExpr(*expr.rhs) : "<null>";
+      return "(" + expr.op + rhs + ")";
+    }
     case ResolvedExprIR::Kind::Binary: {
       const std::string lhs = expr.lhs != nullptr ? FormatResolvedExpr(*expr.lhs) : "<null>";
       const std::string rhs = expr.rhs != nullptr ? FormatResolvedExpr(*expr.rhs) : "<null>";

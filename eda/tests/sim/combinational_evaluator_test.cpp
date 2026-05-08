@@ -40,6 +40,15 @@ int NetValueByName(const mnf::CombinationalEvalResult& result,
   return -1;
 }
 
+bool HasDiagnosticSubstring(const mnf::CombinationalEvalResult& result, const std::string& needle) {
+  for (const auto& diagnostic : result.diagnostics) {
+    if (diagnostic.message.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 TEST(CombinationalEvaluatorTest, EvaluatesTopLevelAndHierarchicalAssigns) {
@@ -104,33 +113,59 @@ endmodule
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
 }
 
-TEST(CombinationalEvaluatorTest, EvaluatesNestedAndExpressions) {
+TEST(CombinationalEvaluatorTest, EvaluatesMixedOperatorsAndUnaryExpressions) {
   const std::string input = R"(module top(in1, in2, in3, out1);
   input in1;
   input in2;
   input in3;
   output out1;
-  assign out1 = in1 & in2 & in3;
+  assign out1 = ~in1 | (in2 & in3) ^ 1;
 endmodule
 )";
 
   const mnf::ElaboratedDesign design = BuildDesign(input);
   mnf::CombinationalEvaluator evaluator;
 
-  const auto result_zero = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 1}, {"in3", 0}});
-  ASSERT_TRUE(result_zero.Ok());
-  EXPECT_EQ(NetValueByName(result_zero, design.top_graph, "out1"), 0);
+  const auto result_a = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 1}, {"in3", 1}});
+  ASSERT_TRUE(result_a.Ok());
+  EXPECT_EQ(NetValueByName(result_a, design.top_graph, "out1"), 0);
 
-  const auto result_one = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 1}, {"in3", 1}});
-  ASSERT_TRUE(result_one.Ok());
-  EXPECT_EQ(NetValueByName(result_one, design.top_graph, "out1"), 1);
+  const auto result_b = evaluator.Evaluate(design.top_graph, {{"in1", 0}, {"in2", 0}, {"in3", 1}});
+  ASSERT_TRUE(result_b.Ok());
+  EXPECT_EQ(NetValueByName(result_b, design.top_graph, "out1"), 1);
 }
 
-TEST(CombinationalEvaluatorTest, EvaluatesBinaryExpressionsWithConstants) {
+TEST(CombinationalEvaluatorTest, EvaluatesAssignsInDependencyOrderInsteadOfSourceOrder) {
+  const std::string input = R"(module top(in1, in2, in3, out1);
+  input in1;
+  input in2;
+  input in3;
+  output out1;
+  wire a1;
+  wire a2;
+  assign out1 = a2;
+  assign a2 = a1 | in3;
+  assign a1 = in1 & in2;
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+  const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}, {"in2", 0}, {"in3", 1}});
+
+  ASSERT_TRUE(result.Ok());
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "a1"), 0);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "a2"), 1);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
+}
+
+TEST(CombinationalEvaluatorTest, ReportsCombinationalAssignCycles) {
   const std::string input = R"(module top(in1, out1);
   input in1;
   output out1;
-  assign out1 = in1 & 1;
+  wire a1;
+  assign a1 = out1;
+  assign out1 = a1 | in1;
 endmodule
 )";
 
@@ -138,6 +173,6 @@ endmodule
   mnf::CombinationalEvaluator evaluator;
   const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}});
 
-  ASSERT_TRUE(result.Ok());
-  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
+  ASSERT_FALSE(result.Ok());
+  EXPECT_TRUE(HasDiagnosticSubstring(result, "Combinational assign cycle detected"));
 }

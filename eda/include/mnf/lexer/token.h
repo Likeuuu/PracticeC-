@@ -22,6 +22,9 @@ enum class TokenKind {
   Dot,
   Equal,
   Ampersand,
+  Pipe,
+  Caret,
+  Tilde,
   EndOfFile,
   Invalid
 };

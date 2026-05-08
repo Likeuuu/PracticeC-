@@ -49,6 +49,13 @@ void ValidateExpression(const Expression& expr,
     return;
   }
 
+  if (expr.kind == Expression::Kind::Unary) {
+    if (expr.rhs != nullptr) {
+      ValidateExpression(*expr.rhs, declared_signals, diagnostics);
+    }
+    return;
+  }
+
   if (expr.kind == Expression::Kind::Binary) {
     if (expr.lhs != nullptr) {
       ValidateExpression(*expr.lhs, declared_signals, diagnostics);

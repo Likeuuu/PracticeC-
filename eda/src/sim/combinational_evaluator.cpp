@@ -1,6 +1,8 @@
 #include "mnf/sim/combinational_evaluator.h"
 
 #include <algorithm>
+#include <queue>
+#include <unordered_set>
 
 namespace mnf {
 
@@ -14,6 +16,31 @@ bool IsBitValue(int value) {
 
 Diagnostic MakeEvalError(const std::string& message) {
   return Diagnostic{DiagnosticLevel::Error, message, {"", 1, 1}};
+}
+
+void CollectReferencedNetIds(const ResolvedExprIR& expr, std::vector<int>* net_ids) {
+  switch (expr.kind) {
+    case ResolvedExprIR::Kind::Net:
+      if (expr.net_id >= 0) {
+        net_ids->push_back(expr.net_id);
+      }
+      return;
+    case ResolvedExprIR::Kind::Constant:
+      return;
+    case ResolvedExprIR::Kind::Unary:
+      if (expr.rhs != nullptr) {
+        CollectReferencedNetIds(*expr.rhs, net_ids);
+      }
+      return;
+    case ResolvedExprIR::Kind::Binary:
+      if (expr.lhs != nullptr) {
+        CollectReferencedNetIds(*expr.lhs, net_ids);
+      }
+      if (expr.rhs != nullptr) {
+        CollectReferencedNetIds(*expr.rhs, net_ids);
+      }
+      return;
+  }
 }
 
 int EvaluateExpr(const ResolvedExprIR& expr,
@@ -34,28 +61,122 @@ int EvaluateExpr(const ResolvedExprIR& expr,
       }
       return expr.constant_value;
 
+    case ResolvedExprIR::Kind::Unary:
+      if (expr.rhs == nullptr) {
+        diagnostics->push_back(MakeEvalError("Unary expression is incomplete"));
+        return kUnknown;
+      }
+      if (expr.op != "~") {
+        diagnostics->push_back(MakeEvalError("Unsupported unary operator: " + expr.op));
+        return kUnknown;
+      }
+      {
+        const int operand_value = EvaluateExpr(*expr.rhs, net_values, diagnostics);
+        if (operand_value == kUnknown) {
+          return kUnknown;
+        }
+        return operand_value == 0 ? 1 : 0;
+      }
+
     case ResolvedExprIR::Kind::Binary:
       if (expr.lhs == nullptr || expr.rhs == nullptr) {
         diagnostics->push_back(MakeEvalError("Binary expression is incomplete"));
         return kUnknown;
       }
-      if (expr.op != "&") {
-        diagnostics->push_back(MakeEvalError("Unsupported binary operator: " + expr.op));
-        return kUnknown;
-      }
-
       {
         const int lhs_value = EvaluateExpr(*expr.lhs, net_values, diagnostics);
         const int rhs_value = EvaluateExpr(*expr.rhs, net_values, diagnostics);
         if (lhs_value == kUnknown || rhs_value == kUnknown) {
           return kUnknown;
         }
-        return lhs_value & rhs_value;
+
+        if (expr.op == "&") {
+          return lhs_value & rhs_value;
+        }
+        if (expr.op == "^") {
+          return lhs_value ^ rhs_value;
+        }
+        if (expr.op == "|") {
+          return lhs_value | rhs_value;
+        }
+
+        diagnostics->push_back(MakeEvalError("Unsupported binary operator: " + expr.op));
+        return kUnknown;
       }
   }
 
   diagnostics->push_back(MakeEvalError("Unsupported resolved expression kind"));
   return kUnknown;
+}
+
+std::vector<int> BuildEvaluationOrder(const ResolvedNetGraphIR& graph,
+                                      std::vector<Diagnostic>* diagnostics) {
+  std::unordered_map<int, int> target_to_assign;
+  std::vector<std::vector<int>> assign_edges(graph.assigns.size());
+  std::vector<int> indegree(graph.assigns.size(), 0);
+
+  for (std::size_t i = 0; i < graph.assigns.size(); ++i) {
+    const int target_net_id = graph.assigns[i].target_net_id;
+    if (target_net_id < 0) {
+      diagnostics->push_back(MakeEvalError("Assign target net id is invalid"));
+      continue;
+    }
+
+    if (!target_to_assign.emplace(target_net_id, static_cast<int>(i)).second) {
+      diagnostics->push_back(MakeEvalError("Multiple combinational drivers detected on the same net"));
+    }
+  }
+
+  for (std::size_t i = 0; i < graph.assigns.size(); ++i) {
+    std::vector<int> referenced_net_ids;
+    CollectReferencedNetIds(graph.assigns[i].rhs_expr, &referenced_net_ids);
+
+    std::unordered_set<int> seen_dependencies;
+    for (const int net_id : referenced_net_ids) {
+      const auto it = target_to_assign.find(net_id);
+      if (it == target_to_assign.end()) {
+        continue;
+      }
+
+      const int producer_index = it->second;
+      if (producer_index == static_cast<int>(i)) {
+        continue;
+      }
+      if (!seen_dependencies.insert(producer_index).second) {
+        continue;
+      }
+
+      assign_edges[static_cast<std::size_t>(producer_index)].push_back(static_cast<int>(i));
+      ++indegree[i];
+    }
+  }
+
+  std::queue<int> ready;
+  for (std::size_t i = 0; i < indegree.size(); ++i) {
+    if (indegree[i] == 0) {
+      ready.push(static_cast<int>(i));
+    }
+  }
+
+  std::vector<int> order;
+  while (!ready.empty()) {
+    const int index = ready.front();
+    ready.pop();
+    order.push_back(index);
+
+    for (const int next_index : assign_edges[static_cast<std::size_t>(index)]) {
+      --indegree[static_cast<std::size_t>(next_index)];
+      if (indegree[static_cast<std::size_t>(next_index)] == 0) {
+        ready.push(next_index);
+      }
+    }
+  }
+
+  if (order.size() != graph.assigns.size()) {
+    diagnostics->push_back(MakeEvalError("Combinational assign cycle detected"));
+  }
+
+  return order;
 }
 
 }  // namespace
@@ -82,26 +203,24 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
     result.net_values[static_cast<std::size_t>(it->id)] = value;
   }
 
-  bool changed = true;
-  for (std::size_t pass = 0; pass < graph.assigns.size() && changed; ++pass) {
-    changed = false;
-    for (const auto& assign : graph.assigns) {
-      if (assign.target_net_id < 0 || static_cast<std::size_t>(assign.target_net_id) >= result.net_values.size()) {
-        result.diagnostics.push_back(MakeEvalError("Assign target net id is invalid"));
-        continue;
-      }
+  const std::vector<int> evaluation_order = BuildEvaluationOrder(graph, &result.diagnostics);
+  if (!result.Ok()) {
+    return result;
+  }
 
-      const int value = EvaluateExpr(assign.rhs_expr, result.net_values, &result.diagnostics);
-      if (value == kUnknown) {
-        continue;
-      }
-
-      auto& target_value = result.net_values[static_cast<std::size_t>(assign.target_net_id)];
-      if (target_value != value) {
-        target_value = value;
-        changed = true;
-      }
+  for (const int assign_index : evaluation_order) {
+    const auto& assign = graph.assigns[static_cast<std::size_t>(assign_index)];
+    if (assign.target_net_id < 0 || static_cast<std::size_t>(assign.target_net_id) >= result.net_values.size()) {
+      result.diagnostics.push_back(MakeEvalError("Assign target net id is invalid"));
+      continue;
     }
+
+    const int value = EvaluateExpr(assign.rhs_expr, result.net_values, &result.diagnostics);
+    if (value == kUnknown) {
+      continue;
+    }
+
+    result.net_values[static_cast<std::size_t>(assign.target_net_id)] = value;
   }
 
   return result;

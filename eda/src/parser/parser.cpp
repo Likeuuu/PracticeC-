@@ -5,6 +5,29 @@
 
 namespace mnf {
 
+namespace {
+
+Expression MakeUnaryExpression(Token op_token, Expression operand) {
+  Expression expr;
+  expr.location = op_token.location;
+  expr.kind = Expression::Kind::Unary;
+  expr.text = op_token.lexeme;
+  expr.rhs = std::make_unique<Expression>(std::move(operand));
+  return expr;
+}
+
+Expression MakeBinaryExpression(Expression lhs, Token op_token, Expression rhs) {
+  Expression expr;
+  expr.location = op_token.location;
+  expr.kind = Expression::Kind::Binary;
+  expr.text = op_token.lexeme;
+  expr.lhs = std::make_unique<Expression>(std::move(lhs));
+  expr.rhs = std::make_unique<Expression>(std::move(rhs));
+  return expr;
+}
+
+}  // namespace
+
 Parser::Parser(Lexer& lexer) : lexer_(lexer), current_(lexer_.NextToken()) {}
 
 Result<Program> Parser::ParseProgram() {
@@ -199,31 +222,89 @@ Result<AssignStmt> Parser::ParseAssignStmt() {
 }
 
 Result<Expression> Parser::ParseExpression() {
-  auto lhs = ParsePrimaryExpression();
+  return ParseBitwiseOrExpression();
+}
+
+Result<Expression> Parser::ParseBitwiseOrExpression() {
+  auto lhs = ParseBitwiseXorExpression();
+  if (!lhs.Ok()) {
+    return Result<Expression>{std::nullopt, {}};
+  }
+
+  while (current_.kind == TokenKind::Pipe) {
+    Token op_token = Consume();
+    auto rhs = ParseBitwiseXorExpression();
+    if (!rhs.Ok()) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+    lhs = Result<Expression>{MakeBinaryExpression(std::move(*lhs.value), op_token, std::move(*rhs.value)), {}};
+  }
+
+  return lhs;
+}
+
+Result<Expression> Parser::ParseBitwiseXorExpression() {
+  auto lhs = ParseBitwiseAndExpression();
+  if (!lhs.Ok()) {
+    return Result<Expression>{std::nullopt, {}};
+  }
+
+  while (current_.kind == TokenKind::Caret) {
+    Token op_token = Consume();
+    auto rhs = ParseBitwiseAndExpression();
+    if (!rhs.Ok()) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+    lhs = Result<Expression>{MakeBinaryExpression(std::move(*lhs.value), op_token, std::move(*rhs.value)), {}};
+  }
+
+  return lhs;
+}
+
+Result<Expression> Parser::ParseBitwiseAndExpression() {
+  auto lhs = ParseUnaryExpression();
   if (!lhs.Ok()) {
     return Result<Expression>{std::nullopt, {}};
   }
 
   while (current_.kind == TokenKind::Ampersand) {
     Token op_token = Consume();
-    auto rhs = ParsePrimaryExpression();
+    auto rhs = ParseUnaryExpression();
     if (!rhs.Ok()) {
       return Result<Expression>{std::nullopt, {}};
     }
-
-    Expression combined;
-    combined.location = op_token.location;
-    combined.kind = Expression::Kind::Binary;
-    combined.text = op_token.lexeme;
-    combined.lhs = std::make_unique<Expression>(std::move(*lhs.value));
-    combined.rhs = std::make_unique<Expression>(std::move(*rhs.value));
-    lhs = Result<Expression>{std::move(combined), {}};
+    lhs = Result<Expression>{MakeBinaryExpression(std::move(*lhs.value), op_token, std::move(*rhs.value)), {}};
   }
 
   return lhs;
 }
 
+Result<Expression> Parser::ParseUnaryExpression() {
+  if (current_.kind == TokenKind::Tilde) {
+    Token op_token = Consume();
+    auto operand = ParseUnaryExpression();
+    if (!operand.Ok()) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+    return Result<Expression>{MakeUnaryExpression(op_token, std::move(*operand.value)), {}};
+  }
+
+  return ParsePrimaryExpression();
+}
+
 Result<Expression> Parser::ParsePrimaryExpression() {
+  if (current_.kind == TokenKind::LParen) {
+    Consume();
+    auto expr = ParseExpression();
+    if (!expr.Ok()) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+    if (!Expect(TokenKind::RParen, "Expected ')' after parenthesized expression")) {
+      return Result<Expression>{std::nullopt, {}};
+    }
+    return expr;
+  }
+
   Expression expr;
   expr.location = current_.location;
 
@@ -240,7 +321,7 @@ Result<Expression> Parser::ParsePrimaryExpression() {
   }
 
   diagnostics_.push_back(Diagnostic{DiagnosticLevel::Error,
-                                    "Expected identifier or number in expression",
+                                    "Expected identifier, number, '(' or unary operator in expression",
                                     current_.location});
   return Result<Expression>{std::nullopt, {}};
 }

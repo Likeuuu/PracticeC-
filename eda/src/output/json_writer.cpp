@@ -39,6 +39,15 @@ void WriteResolvedExpr(std::ostringstream& oss, const ResolvedExprIR& expr) {
     case ResolvedExprIR::Kind::Constant:
       oss << "{\"kind\": \"constant\", \"value\": " << expr.constant_value << "}";
       return;
+    case ResolvedExprIR::Kind::Unary:
+      oss << "{\"kind\": \"unary\", \"op\": \"" << expr.op << "\", \"rhs\": ";
+      if (expr.rhs != nullptr) {
+        WriteResolvedExpr(oss, *expr.rhs);
+      } else {
+        oss << "null";
+      }
+      oss << "}";
+      return;
     case ResolvedExprIR::Kind::Binary:
       oss << "{\"kind\": \"binary\", \"op\": \"" << expr.op << "\", \"lhs\": ";
       if (expr.lhs != nullptr) {

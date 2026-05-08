@@ -31,6 +31,7 @@ struct Expression : AstNode {
   enum class Kind {
     Identifier,
     Number,
+    Unary,
     Binary
   };
 

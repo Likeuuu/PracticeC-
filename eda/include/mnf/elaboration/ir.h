@@ -44,6 +44,7 @@ struct ResolvedExprIR {
   enum class Kind {
     Net,
     Constant,
+    Unary,
     Binary
   };
 
