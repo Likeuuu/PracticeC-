@@ -13,30 +13,49 @@ namespace mnf {
 
 namespace {
 
+struct ScopeSymbol {
+  enum class Kind {
+    Port,
+    Wire
+  };
+
+  Kind kind = Kind::Wire;
+  int net_id = -1;
+};
+
 struct ScopeFrame {
   std::string instance_path;
   const ModuleDecl* module = nullptr;
   const ScopeFrame* parent = nullptr;
-  std::unordered_map<std::string, int> local_net_ids;
+  std::unordered_map<std::string, ScopeSymbol> local_symbols;
 
-  bool BindLocal(const std::string& name, int net_id) {
-    return local_net_ids.emplace(name, net_id).second;
+  bool BindLocal(const std::string& name, ScopeSymbol::Kind kind, int net_id) {
+    return local_symbols.emplace(name, ScopeSymbol{kind, net_id}).second;
   }
 
   bool ContainsLocal(const std::string& name) const {
-    return local_net_ids.find(name) != local_net_ids.end();
+    return local_symbols.find(name) != local_symbols.end();
   }
 
-  bool LookupNetId(const std::string& name, int* net_id) const {
-    const auto it = local_net_ids.find(name);
-    if (it != local_net_ids.end()) {
-      *net_id = it->second;
+  bool LookupSymbol(const std::string& name, ScopeSymbol* symbol) const {
+    const auto it = local_symbols.find(name);
+    if (it != local_symbols.end()) {
+      *symbol = it->second;
       return true;
     }
     if (parent != nullptr) {
-      return parent->LookupNetId(name, net_id);
+      return parent->LookupSymbol(name, symbol);
     }
     return false;
+  }
+
+  bool LookupNetId(const std::string& name, int* net_id) const {
+    ScopeSymbol symbol;
+    if (!LookupSymbol(name, &symbol)) {
+      return false;
+    }
+    *net_id = symbol.net_id;
+    return true;
   }
 };
 
@@ -148,9 +167,9 @@ ResolvedExprIR ResolveExpression(const Expression& expr, const ScopeFrame& scope
 
   if (expr.kind == Expression::Kind::Identifier) {
     resolved_expr.kind = ResolvedExprIR::Kind::Net;
-    int net_id = -1;
-    if (scope.LookupNetId(expr.text, &net_id)) {
-      resolved_expr.net_id = net_id;
+    ScopeSymbol symbol;
+    if (scope.LookupSymbol(expr.text, &symbol)) {
+      resolved_expr.net_id = symbol.net_id;
     }
     return resolved_expr;
   }
@@ -185,6 +204,17 @@ std::string JoinPath(const std::string& instance_path, const std::string& local_
   return instance_path.empty() ? local_name : instance_path + "." + local_name;
 }
 
+void BindTopPorts(const ModuleDecl& top_module,
+                  ScopeFrame* top_scope,
+                  int* next_net_id,
+                  ResolvedNetGraphIR* graph) {
+  for (const auto& port_name : top_module.ports) {
+    top_scope->BindLocal(port_name, ScopeSymbol::Kind::Port, *next_net_id);
+    graph->nets.push_back(ResolvedNetIR{*next_net_id, port_name, port_name, ResolvedNetIR::Kind::Port});
+    ++(*next_net_id);
+  }
+}
+
 void AddLocalWiresToScope(const ModuleDecl& module,
                           const std::string& instance_path,
                           int* next_net_id,
@@ -196,7 +226,7 @@ void AddLocalWiresToScope(const ModuleDecl& module,
         continue;
       }
       const int net_id = (*next_net_id)++;
-      scope->BindLocal(wire_name, net_id);
+      scope->BindLocal(wire_name, ScopeSymbol::Kind::Wire, net_id);
       graph->nets.push_back(ResolvedNetIR{net_id, wire_name, JoinPath(instance_path, wire_name), ResolvedNetIR::Kind::Wire});
     }
   }
@@ -237,7 +267,7 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
         continue;
       }
 
-      child_scope.BindLocal(connection.port_name, signal_net_id);
+      child_scope.BindLocal(connection.port_name, ScopeSymbol::Kind::Port, signal_net_id);
       graph->instance_bindings.push_back(ResolvedInstanceBindingIR{
           child_scope.instance_path,
           instance.module_name,
@@ -255,12 +285,7 @@ ResolvedNetGraphIR BuildResolvedGraph(const SymbolTable& symbols, const ModuleDe
   top_scope.module = &top_module;
 
   int next_net_id = 0;
-  for (const auto& port_name : top_module.ports) {
-    top_scope.BindLocal(port_name, next_net_id);
-    graph.nets.push_back(ResolvedNetIR{next_net_id, port_name, port_name, ResolvedNetIR::Kind::Port});
-    ++next_net_id;
-  }
-
+  BindTopPorts(top_module, &top_scope, &next_net_id, &graph);
   BuildResolvedGraphRecursive(symbols, &top_scope, &next_net_id, &graph);
   return graph;
 }
