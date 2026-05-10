@@ -66,6 +66,16 @@ void WriteResolvedExpr(std::ostringstream& oss, const ResolvedExprIR& expr) {
   }
 }
 
+const char* ScopeKindToString(ResolvedScopeSymbolIR::Kind kind) {
+  switch (kind) {
+    case ResolvedScopeSymbolIR::Kind::Port:
+      return "port";
+    case ResolvedScopeSymbolIR::Kind::Wire:
+    default:
+      return "wire";
+  }
+}
+
 }  // namespace
 
 std::string JsonWriter::Write(const ElaboratedDesign& design) const {
@@ -115,6 +125,28 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
         << "\", \"qualified_name\": \"" << design.top_graph.nets[i].qualified_name
         << "\", \"kind\": \"" << (design.top_graph.nets[i].kind == ResolvedNetIR::Kind::Port ? "port" : "wire")
         << "\"}";
+  }
+  oss << "], ";
+  oss << "\"scope_frames\": [";
+  for (std::size_t i = 0; i < design.top_graph.scope_frames.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    const auto& frame = design.top_graph.scope_frames[i];
+    oss << "{\"instance_path\": \"" << frame.instance_path
+        << "\", \"module\": \"" << frame.module_name << "\", \"symbols\": [";
+    for (std::size_t j = 0; j < frame.symbols.size(); ++j) {
+      if (j != 0) {
+        oss << ", ";
+      }
+      const auto& symbol = frame.symbols[j];
+      oss << "{\"name\": \"" << symbol.name
+          << "\", \"decl_name\": \"" << symbol.decl_name
+          << "\", \"qualified_name\": \"" << symbol.qualified_name
+          << "\", \"kind\": \"" << ScopeKindToString(symbol.kind)
+          << "\", \"net\": " << symbol.net_id << "}";
+    }
+    oss << "]}";
   }
   oss << "], ";
   oss << "\"assigns\": [";

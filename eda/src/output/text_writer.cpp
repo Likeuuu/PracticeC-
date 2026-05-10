@@ -24,6 +24,16 @@ const char* NetKindToString(ResolvedNetIR::Kind kind) {
   }
 }
 
+const char* ScopeKindToString(ResolvedScopeSymbolIR::Kind kind) {
+  switch (kind) {
+    case ResolvedScopeSymbolIR::Kind::Port:
+      return "port";
+    case ResolvedScopeSymbolIR::Kind::Wire:
+    default:
+      return "wire";
+  }
+}
+
 std::string FormatResolvedExpr(const ResolvedExprIR& expr) {
   switch (expr.kind) {
     case ResolvedExprIR::Kind::Net:
@@ -64,6 +74,18 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
   oss << "Resolved hierarchical nets: " << design.top_graph.nets.size() << "\n";
   for (const auto& net : design.top_graph.nets) {
     oss << "  net[" << net.id << "] " << net.qualified_name << " (" << NetKindToString(net.kind) << ")\n";
+  }
+  oss << "Resolved scope frames: " << design.top_graph.scope_frames.size() << "\n";
+  for (const auto& frame : design.top_graph.scope_frames) {
+    oss << "  scope@" << (frame.instance_path.empty() ? "<top>" : frame.instance_path)
+        << " module=" << frame.module_name << "\n";
+    for (const auto& symbol : frame.symbols) {
+      oss << "    " << symbol.name
+          << " kind=" << ScopeKindToString(symbol.kind)
+          << " decl=" << symbol.decl_name
+          << " view=" << symbol.qualified_name
+          << " -> net[" << symbol.net_id << "]\n";
+    }
   }
   oss << "Resolved hierarchical assigns: " << design.top_graph.assigns.size() << "\n";
   for (const auto& assign : design.top_graph.assigns) {

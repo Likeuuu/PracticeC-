@@ -21,6 +21,8 @@ struct ScopeSymbol {
 
   Kind kind = Kind::Wire;
   int net_id = -1;
+  std::string decl_name;
+  std::string qualified_name;
 };
 
 struct ScopeFrame {
@@ -29,8 +31,12 @@ struct ScopeFrame {
   const ScopeFrame* parent = nullptr;
   std::unordered_map<std::string, ScopeSymbol> local_symbols;
 
-  bool BindLocal(const std::string& name, ScopeSymbol::Kind kind, int net_id) {
-    return local_symbols.emplace(name, ScopeSymbol{kind, net_id}).second;
+  bool BindLocal(const std::string& name,
+                 ScopeSymbol::Kind kind,
+                 int net_id,
+                 const std::string& decl_name,
+                 const std::string& qualified_name) {
+    return local_symbols.emplace(name, ScopeSymbol{kind, net_id, decl_name, qualified_name}).second;
   }
 
   bool ContainsLocal(const std::string& name) const {
@@ -58,6 +64,16 @@ struct ScopeFrame {
     return true;
   }
 };
+
+ResolvedScopeSymbolIR::Kind ToResolvedScopeKind(ScopeSymbol::Kind kind) {
+  switch (kind) {
+    case ScopeSymbol::Kind::Port:
+      return ResolvedScopeSymbolIR::Kind::Port;
+    case ScopeSymbol::Kind::Wire:
+    default:
+      return ResolvedScopeSymbolIR::Kind::Wire;
+  }
+}
 
 const ModuleDecl* FindTopModule(const Program& program, const std::string& top_name) {
   for (const auto& module : program.modules) {
@@ -204,12 +220,34 @@ std::string JoinPath(const std::string& instance_path, const std::string& local_
   return instance_path.empty() ? local_name : instance_path + "." + local_name;
 }
 
+void CaptureScopeFrame(const ScopeFrame& scope, ResolvedNetGraphIR* graph) {
+  ResolvedScopeFrameIR frame_ir;
+  frame_ir.instance_path = scope.instance_path;
+  frame_ir.module_name = scope.module != nullptr ? scope.module->name : "";
+
+  std::vector<std::pair<std::string, ScopeSymbol>> ordered_symbols(scope.local_symbols.begin(), scope.local_symbols.end());
+  std::sort(ordered_symbols.begin(), ordered_symbols.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first < rhs.first;
+  });
+
+  for (const auto& [name, symbol] : ordered_symbols) {
+    frame_ir.symbols.push_back(ResolvedScopeSymbolIR{
+        name,
+        symbol.decl_name,
+        symbol.qualified_name,
+        ToResolvedScopeKind(symbol.kind),
+        symbol.net_id});
+  }
+
+  graph->scope_frames.push_back(std::move(frame_ir));
+}
+
 void BindTopPorts(const ModuleDecl& top_module,
                   ScopeFrame* top_scope,
                   int* next_net_id,
                   ResolvedNetGraphIR* graph) {
   for (const auto& port_name : top_module.ports) {
-    top_scope->BindLocal(port_name, ScopeSymbol::Kind::Port, *next_net_id);
+    top_scope->BindLocal(port_name, ScopeSymbol::Kind::Port, *next_net_id, port_name, port_name);
     graph->nets.push_back(ResolvedNetIR{*next_net_id, port_name, port_name, ResolvedNetIR::Kind::Port});
     ++(*next_net_id);
   }
@@ -226,8 +264,9 @@ void AddLocalWiresToScope(const ModuleDecl& module,
         continue;
       }
       const int net_id = (*next_net_id)++;
-      scope->BindLocal(wire_name, ScopeSymbol::Kind::Wire, net_id);
-      graph->nets.push_back(ResolvedNetIR{net_id, wire_name, JoinPath(instance_path, wire_name), ResolvedNetIR::Kind::Wire});
+      const std::string qualified_name = JoinPath(instance_path, wire_name);
+      scope->BindLocal(wire_name, ScopeSymbol::Kind::Wire, net_id, wire_name, qualified_name);
+      graph->nets.push_back(ResolvedNetIR{net_id, wire_name, qualified_name, ResolvedNetIR::Kind::Wire});
     }
   }
 }
@@ -237,6 +276,7 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
                                  int* next_net_id,
                                  ResolvedNetGraphIR* graph) {
   AddLocalWiresToScope(*scope->module, scope->instance_path, next_net_id, scope, graph);
+  CaptureScopeFrame(*scope, graph);
 
   for (const auto& assign_stmt : scope->module->assign_stmts) {
     ResolvedAssignIR resolved_assign;
@@ -267,7 +307,11 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
         continue;
       }
 
-      child_scope.BindLocal(connection.port_name, ScopeSymbol::Kind::Port, signal_net_id);
+      child_scope.BindLocal(connection.port_name,
+                            ScopeSymbol::Kind::Port,
+                            signal_net_id,
+                            connection.port_name,
+                            JoinPath(child_scope.instance_path, connection.port_name));
       graph->instance_bindings.push_back(ResolvedInstanceBindingIR{
           child_scope.instance_path,
           instance.module_name,

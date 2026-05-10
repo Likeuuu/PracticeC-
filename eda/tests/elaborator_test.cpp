@@ -19,6 +19,24 @@ void ExpectNetIds(const std::vector<int>& actual, const std::vector<int>& expect
   }
 }
 
+const mnf::ResolvedScopeFrameIR* FindScopeFrame(const mnf::ResolvedNetGraphIR& graph, const std::string& instance_path) {
+  for (const auto& frame : graph.scope_frames) {
+    if (frame.instance_path == instance_path) {
+      return &frame;
+    }
+  }
+  return nullptr;
+}
+
+const mnf::ResolvedScopeSymbolIR* FindScopeSymbol(const mnf::ResolvedScopeFrameIR& frame, const std::string& name) {
+  for (const auto& symbol : frame.symbols) {
+    if (symbol.name == name) {
+      return &symbol;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 TEST(ElaboratorTest, BuildsHierarchyAndResolvedTopGraph) {
@@ -79,6 +97,35 @@ endmodule
   EXPECT_EQ(design_result.value->top_graph.nets[4].qualified_name, "and_out");
   EXPECT_EQ(design_result.value->top_graph.nets[5].qualified_name, "u_mid.mid_wire");
   EXPECT_EQ(design_result.value->top_graph.nets[6].qualified_name, "u_mid.u_leaf.leaf_wire");
+
+  ASSERT_EQ(design_result.value->top_graph.scope_frames.size(), 3u);
+  const auto* top_scope = FindScopeFrame(design_result.value->top_graph, "");
+  ASSERT_NE(top_scope, nullptr);
+  EXPECT_EQ(top_scope->module_name, "top");
+  const auto* top_port = FindScopeSymbol(*top_scope, "in1");
+  ASSERT_NE(top_port, nullptr);
+  EXPECT_EQ(top_port->kind, mnf::ResolvedScopeSymbolIR::Kind::Port);
+  EXPECT_EQ(top_port->qualified_name, "in1");
+  EXPECT_EQ(top_port->net_id, 0);
+  const auto* top_wire = FindScopeSymbol(*top_scope, "and_out");
+  ASSERT_NE(top_wire, nullptr);
+  EXPECT_EQ(top_wire->kind, mnf::ResolvedScopeSymbolIR::Kind::Wire);
+  EXPECT_EQ(top_wire->qualified_name, "and_out");
+  EXPECT_EQ(top_wire->net_id, 4);
+
+  const auto* mid_scope = FindScopeFrame(design_result.value->top_graph, "u_mid");
+  ASSERT_NE(mid_scope, nullptr);
+  EXPECT_EQ(mid_scope->module_name, "mid");
+  const auto* mid_port = FindScopeSymbol(*mid_scope, "in1");
+  ASSERT_NE(mid_port, nullptr);
+  EXPECT_EQ(mid_port->kind, mnf::ResolvedScopeSymbolIR::Kind::Port);
+  EXPECT_EQ(mid_port->qualified_name, "u_mid.in1");
+  EXPECT_EQ(mid_port->net_id, 4);
+  const auto* mid_wire = FindScopeSymbol(*mid_scope, "mid_wire");
+  ASSERT_NE(mid_wire, nullptr);
+  EXPECT_EQ(mid_wire->kind, mnf::ResolvedScopeSymbolIR::Kind::Wire);
+  EXPECT_EQ(mid_wire->qualified_name, "u_mid.mid_wire");
+  EXPECT_EQ(mid_wire->net_id, 5);
 
   ASSERT_EQ(design_result.value->top_graph.assigns.size(), 3u);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].instance_path, "");

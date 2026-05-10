@@ -99,10 +99,30 @@ struct ResolvedInstanceBindingIR {
   int signal_net_id = -1;
 };
 
+struct ResolvedScopeSymbolIR {
+  enum class Kind {
+    Port,
+    Wire
+  };
+
+  std::string name;
+  std::string decl_name;
+  std::string qualified_name;
+  Kind kind = Kind::Wire;
+  int net_id = -1;
+};
+
+struct ResolvedScopeFrameIR {
+  std::string instance_path;
+  std::string module_name;
+  std::vector<ResolvedScopeSymbolIR> symbols;
+};
+
 struct ResolvedNetGraphIR {
   std::vector<ResolvedNetIR> nets;
   std::vector<ResolvedAssignIR> assigns;
   std::vector<ResolvedInstanceBindingIR> instance_bindings;
+  std::vector<ResolvedScopeFrameIR> scope_frames;
 };
 
 struct ElaboratedDesign {
