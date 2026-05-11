@@ -130,6 +130,7 @@ endmodule
   ASSERT_EQ(design_result.value->top_graph.assigns.size(), 3u);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].instance_path, "");
   EXPECT_EQ(design_result.value->top_graph.assigns[0].target_net_id, 4);
+  EXPECT_EQ(design_result.value->top_graph.assigns[0].target_name_view, "and_out");
   EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Binary);
   EXPECT_EQ(design_result.value->top_graph.assigns[0].rhs_expr.op, "&");
   ASSERT_NE(design_result.value->top_graph.assigns[0].rhs_expr.lhs, nullptr);
@@ -142,12 +143,14 @@ endmodule
 
   EXPECT_EQ(design_result.value->top_graph.assigns[1].instance_path, "u_mid");
   EXPECT_EQ(design_result.value->top_graph.assigns[1].target_net_id, 5);
+  EXPECT_EQ(design_result.value->top_graph.assigns[1].target_name_view, "u_mid.mid_wire");
   EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
   EXPECT_EQ(design_result.value->top_graph.assigns[1].rhs_expr.net_id, 4);
   ExpectNetIds(design_result.value->top_graph.assigns[1].source_net_ids, {4});
 
   EXPECT_EQ(design_result.value->top_graph.assigns[2].instance_path, "u_mid.u_leaf");
   EXPECT_EQ(design_result.value->top_graph.assigns[2].target_net_id, 6);
+  EXPECT_EQ(design_result.value->top_graph.assigns[2].target_name_view, "u_mid.u_leaf.leaf_wire");
   EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.kind, mnf::ResolvedExprIR::Kind::Net);
   EXPECT_EQ(design_result.value->top_graph.assigns[2].rhs_expr.net_id, 5);
   ExpectNetIds(design_result.value->top_graph.assigns[2].source_net_ids, {5});

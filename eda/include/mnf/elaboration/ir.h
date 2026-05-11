@@ -88,6 +88,7 @@ struct ResolvedExprIR {
 struct ResolvedAssignIR {
   std::string instance_path;
   int target_net_id = -1;
+  std::string target_name_view;
   ResolvedExprIR rhs_expr;
   std::vector<int> source_net_ids;
 };

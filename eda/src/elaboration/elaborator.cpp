@@ -281,9 +281,10 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
   for (const auto& assign_stmt : scope->module->assign_stmts) {
     ResolvedAssignIR resolved_assign;
     resolved_assign.instance_path = scope->instance_path;
-    int target_net_id = -1;
-    if (scope->LookupNetId(assign_stmt.lhs, &target_net_id)) {
-      resolved_assign.target_net_id = target_net_id;
+    ScopeSymbol target_symbol;
+    if (scope->LookupSymbol(assign_stmt.lhs, &target_symbol)) {
+      resolved_assign.target_net_id = target_symbol.net_id;
+      resolved_assign.target_name_view = target_symbol.qualified_name;
     }
     resolved_assign.rhs_expr = ResolveExpression(assign_stmt.rhs, *scope);
     resolved_assign.source_net_ids = BuildSourceNetIds(resolved_assign.rhs_expr);
