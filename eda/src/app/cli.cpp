@@ -19,6 +19,12 @@ namespace mnf {
 
 namespace {
 
+enum class OutputFormat {
+  Text,
+  Json,
+  Both
+};
+
 std::string ReadFile(const std::string& path) {
   std::ifstream ifs(path);
   return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
@@ -31,17 +37,42 @@ void PrintDiagnostics(const std::vector<Diagnostic>& diagnostics) {
   }
 }
 
+OutputFormat ParseOutputFormat(const std::string& arg) {
+  if (arg == "--format=text") {
+    return OutputFormat::Text;
+  }
+  if (arg == "--format=json") {
+    return OutputFormat::Json;
+  }
+  return OutputFormat::Both;
+}
+
+void PrintUsage() {
+  std::cout << "MiniNetlistFrontend bootstrap\n";
+  std::cout << "Usage: mnf_cli <input-file> [top-module] [--format=text|json|both]\n";
+}
+
 }  // namespace
 
 int CliApp::Run(int argc, char** argv) const {
   if (argc < 2) {
-    std::cout << "MiniNetlistFrontend bootstrap\n";
-    std::cout << "Usage: mnf_cli <input-file> [top-module]\n";
+    PrintUsage();
     return 0;
   }
 
   const std::string input_path = argv[1];
-  const std::string top_name = argc >= 3 ? argv[2] : "top";
+  std::string top_name = "top";
+  OutputFormat format = OutputFormat::Both;
+
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg.rfind("--format=", 0) == 0) {
+      format = ParseOutputFormat(arg);
+      continue;
+    }
+    top_name = arg;
+  }
+
   const std::string input = ReadFile(input_path);
 
   Lexer lexer(input, input_path);
@@ -69,8 +100,19 @@ int CliApp::Run(int argc, char** argv) const {
 
   TextWriter text_writer;
   JsonWriter json_writer;
-  std::cout << text_writer.WriteSummary(*design_result.value);
-  std::cout << json_writer.Write(*design_result.value);
+
+  if (format == OutputFormat::Text || format == OutputFormat::Both) {
+    std::cout << "===== TEXT SUMMARY =====\n";
+    std::cout << text_writer.WriteSummary(*design_result.value);
+  }
+
+  if (format == OutputFormat::Json || format == OutputFormat::Both) {
+    if (format == OutputFormat::Both) {
+      std::cout << "===== JSON IR =====\n";
+    }
+    std::cout << json_writer.Write(*design_result.value);
+  }
+
   return 0;
 }
 
