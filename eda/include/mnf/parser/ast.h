@@ -52,7 +52,8 @@ struct AssignStmt : AstNode {
 
 struct ProceduralAssignStmt : AstNode {
   enum class AssignmentKind {
-    Blocking
+    Blocking,
+    NonBlocking
   };
 
   AssignmentKind assignment_kind = AssignmentKind::Blocking;
@@ -60,15 +61,24 @@ struct ProceduralAssignStmt : AstNode {
   Expression rhs;
 };
 
+struct ProceduralIfStmt;
+
 struct ProceduralStmt : AstNode {
   enum class Kind {
     Assignment,
-    Block
+    Block,
+    If
   };
 
   Kind kind = Kind::Assignment;
   std::unique_ptr<ProceduralAssignStmt> assign_stmt;
+  std::unique_ptr<ProceduralIfStmt> if_stmt;
   std::vector<std::unique_ptr<ProceduralStmt>> statements;
+};
+
+struct ProceduralIfStmt : AstNode {
+  Expression condition;
+  std::unique_ptr<ProceduralStmt> then_stmt;
 };
 
 struct AlwaysBlock : AstNode {

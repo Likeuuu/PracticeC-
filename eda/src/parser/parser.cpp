@@ -303,6 +303,16 @@ Result<std::unique_ptr<ProceduralStmt>> Parser::ParseProceduralStmt() {
     return Result<std::unique_ptr<ProceduralStmt>>{std::move(stmt), {}};
   }
 
+  if (current_.kind == TokenKind::If) {
+    auto if_stmt = ParseProceduralIfStmt();
+    if (!if_stmt.Ok()) {
+      return Result<std::unique_ptr<ProceduralStmt>>{std::nullopt, {}};
+    }
+    stmt->kind = ProceduralStmt::Kind::If;
+    stmt->if_stmt = std::make_unique<ProceduralIfStmt>(std::move(*if_stmt.value));
+    return Result<std::unique_ptr<ProceduralStmt>>{std::move(stmt), {}};
+  }
+
   auto assign_stmt = ParseProceduralAssignStmt();
   if (!assign_stmt.Ok()) {
     return Result<std::unique_ptr<ProceduralStmt>>{std::nullopt, {}};
@@ -323,7 +333,14 @@ Result<ProceduralAssignStmt> Parser::ParseProceduralAssignStmt() {
   }
   stmt.lhs = lhs_token.lexeme;
 
-  if (!Expect(TokenKind::Equal, "Expected '=' in procedural assignment")) {
+  if (Match(TokenKind::Equal)) {
+    stmt.assignment_kind = ProceduralAssignStmt::AssignmentKind::Blocking;
+  } else if (Match(TokenKind::LessEqual)) {
+    stmt.assignment_kind = ProceduralAssignStmt::AssignmentKind::NonBlocking;
+  } else {
+    diagnostics_.push_back(Diagnostic{DiagnosticLevel::Error,
+                                      "Expected '=' or '<=' in procedural assignment",
+                                      current_.location});
     return Result<ProceduralAssignStmt>{std::nullopt, {}};
   }
 
@@ -338,6 +355,39 @@ Result<ProceduralAssignStmt> Parser::ParseProceduralAssignStmt() {
   }
 
   return Result<ProceduralAssignStmt>{std::move(stmt), {}};
+}
+
+Result<ProceduralIfStmt> Parser::ParseProceduralIfStmt() {
+  ProceduralIfStmt stmt;
+  stmt.location = current_.location;
+
+  if (!Match(TokenKind::If)) {
+    diagnostics_.push_back(Diagnostic{DiagnosticLevel::Error,
+                                      "Expected 'if' statement",
+                                      current_.location});
+    return Result<ProceduralIfStmt>{std::nullopt, {}};
+  }
+
+  if (!Expect(TokenKind::LParen, "Expected '(' after 'if'")) {
+    return Result<ProceduralIfStmt>{std::nullopt, {}};
+  }
+
+  auto condition = ParseExpression();
+  if (!condition.Ok()) {
+    return Result<ProceduralIfStmt>{std::nullopt, {}};
+  }
+  stmt.condition = std::move(*condition.value);
+
+  if (!Expect(TokenKind::RParen, "Expected ')' after if condition")) {
+    return Result<ProceduralIfStmt>{std::nullopt, {}};
+  }
+
+  auto then_stmt = ParseProceduralStmt();
+  if (!then_stmt.Ok()) {
+    return Result<ProceduralIfStmt>{std::nullopt, {}};
+  }
+  stmt.then_stmt = std::move(*then_stmt.value);
+  return Result<ProceduralIfStmt>{std::move(stmt), {}};
 }
 
 Result<Expression> Parser::ParseExpression() {

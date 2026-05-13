@@ -25,6 +25,7 @@ private:
   Result<AlwaysBlock> ParseAlwaysBlock();
   Result<std::unique_ptr<ProceduralStmt>> ParseProceduralStmt();
   Result<ProceduralAssignStmt> ParseProceduralAssignStmt();
+  Result<ProceduralIfStmt> ParseProceduralIfStmt();
   Result<Expression> ParseExpression();
   Result<Expression> ParseBitwiseOrExpression();
   Result<Expression> ParseBitwiseXorExpression();

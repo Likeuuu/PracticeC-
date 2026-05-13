@@ -37,13 +37,14 @@ endmodule
   }
 }
 
-TEST(LexerTest, TokenizesAlwaysRegBeginEndKeywords) {
-  const std::string input = R"(module top(a, y);
+TEST(LexerTest, TokenizesAlwaysRegBeginEndIfAndNonBlockingKeywords) {
+  const std::string input = R"(module top(a, b, y);
   input a;
+  input b;
   output y;
   reg state;
   always begin
-    state = a;
+    if (a) state <= b;
   end
 endmodule
 )";
@@ -56,7 +57,12 @@ endmodule
       mnf::TokenKind::Identifier,
       mnf::TokenKind::Comma,
       mnf::TokenKind::Identifier,
+      mnf::TokenKind::Comma,
+      mnf::TokenKind::Identifier,
       mnf::TokenKind::RParen,
+      mnf::TokenKind::Semicolon,
+      mnf::TokenKind::Input,
+      mnf::TokenKind::Identifier,
       mnf::TokenKind::Semicolon,
       mnf::TokenKind::Input,
       mnf::TokenKind::Identifier,
@@ -69,8 +75,12 @@ endmodule
       mnf::TokenKind::Semicolon,
       mnf::TokenKind::Always,
       mnf::TokenKind::Begin,
+      mnf::TokenKind::If,
+      mnf::TokenKind::LParen,
       mnf::TokenKind::Identifier,
-      mnf::TokenKind::Equal,
+      mnf::TokenKind::RParen,
+      mnf::TokenKind::Identifier,
+      mnf::TokenKind::LessEqual,
       mnf::TokenKind::Identifier,
       mnf::TokenKind::Semicolon,
       mnf::TokenKind::End,

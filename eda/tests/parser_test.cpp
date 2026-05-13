@@ -120,11 +120,53 @@ endmodule
   EXPECT_EQ(first_stmt->assign_stmt->lhs, "state");
   EXPECT_EQ(first_stmt->assign_stmt->rhs.kind, mnf::Expression::Kind::Identifier);
   EXPECT_EQ(first_stmt->assign_stmt->rhs.text, "a");
+}
 
-  const auto& second_stmt = top.always_blocks[0].body->statements[1];
-  ASSERT_NE(second_stmt, nullptr);
-  ASSERT_NE(second_stmt->assign_stmt, nullptr);
-  EXPECT_EQ(second_stmt->assign_stmt->lhs, "y");
-  EXPECT_EQ(second_stmt->assign_stmt->rhs.kind, mnf::Expression::Kind::Identifier);
-  EXPECT_EQ(second_stmt->assign_stmt->rhs.text, "state");
+TEST(ParserTest, ParsesProceduralIfAndAssignmentKinds) {
+  const std::string input = R"(module top(a, b, y);
+  input a;
+  input b;
+  output y;
+  reg state;
+  always begin
+    if (a & b) state <= y;
+    y = state;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "parser_if_test.nl");
+  mnf::Parser parser(lexer);
+  auto result = parser.ParseProgram();
+
+  ASSERT_TRUE(result.Ok());
+  ASSERT_EQ(result.value->modules.size(), 1u);
+  const mnf::ModuleDecl& top = *result.value->modules[0];
+
+  ASSERT_EQ(top.always_blocks.size(), 1u);
+  const auto& body = top.always_blocks[0].body;
+  ASSERT_NE(body, nullptr);
+  ASSERT_EQ(body->kind, mnf::ProceduralStmt::Kind::Block);
+  ASSERT_EQ(body->statements.size(), 2u);
+
+  const auto& if_stmt = body->statements[0];
+  ASSERT_NE(if_stmt, nullptr);
+  EXPECT_EQ(if_stmt->kind, mnf::ProceduralStmt::Kind::If);
+  ASSERT_NE(if_stmt->if_stmt, nullptr);
+  EXPECT_EQ(if_stmt->if_stmt->condition.kind, mnf::Expression::Kind::Binary);
+  EXPECT_EQ(if_stmt->if_stmt->condition.text, "&");
+  ASSERT_NE(if_stmt->if_stmt->then_stmt, nullptr);
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->kind, mnf::ProceduralStmt::Kind::Assignment);
+  ASSERT_NE(if_stmt->if_stmt->then_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->assign_stmt->lhs, "state");
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->assign_stmt->assignment_kind,
+            mnf::ProceduralAssignStmt::AssignmentKind::NonBlocking);
+
+  const auto& assign_stmt = body->statements[1];
+  ASSERT_NE(assign_stmt, nullptr);
+  EXPECT_EQ(assign_stmt->kind, mnf::ProceduralStmt::Kind::Assignment);
+  ASSERT_NE(assign_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(assign_stmt->assign_stmt->lhs, "y");
+  EXPECT_EQ(assign_stmt->assign_stmt->assignment_kind,
+            mnf::ProceduralAssignStmt::AssignmentKind::Blocking);
 }

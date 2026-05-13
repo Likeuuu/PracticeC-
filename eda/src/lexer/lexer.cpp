@@ -40,6 +40,8 @@ const char* ToString(TokenKind kind) {
       return "Begin";
     case TokenKind::End:
       return "End";
+    case TokenKind::If:
+      return "If";
     case TokenKind::Identifier:
       return "Identifier";
     case TokenKind::Number:
@@ -56,6 +58,8 @@ const char* ToString(TokenKind kind) {
       return "Dot";
     case TokenKind::Equal:
       return "Equal";
+    case TokenKind::LessEqual:
+      return "LessEqual";
     case TokenKind::Ampersand:
       return "Ampersand";
     case TokenKind::Pipe:
@@ -119,6 +123,12 @@ Token Lexer::LexToken() {
       return MakeToken(TokenKind::Dot, ".", file_name_, start_line, start_column);
     case '=':
       return MakeToken(TokenKind::Equal, "=", file_name_, start_line, start_column);
+    case '<':
+      if (!IsAtEnd() && CurrentChar() == '=') {
+        Advance();
+        return MakeToken(TokenKind::LessEqual, "<=", file_name_, start_line, start_column);
+      }
+      break;
     case '&':
       return MakeToken(TokenKind::Ampersand, "&", file_name_, start_line, start_column);
     case '|':
@@ -152,6 +162,7 @@ Token Lexer::LexToken() {
         {"always", TokenKind::Always},
         {"begin", TokenKind::Begin},
         {"end", TokenKind::End},
+        {"if", TokenKind::If},
     };
 
     const auto it = keywords.find(lexeme);
