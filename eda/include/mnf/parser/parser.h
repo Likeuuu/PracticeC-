@@ -20,7 +20,11 @@ private:
   Result<std::unique_ptr<ModuleDecl>> ParseModule();
   Result<PortDecl> ParsePortDecl();
   Result<WireDecl> ParseWireDecl();
+  Result<RegDecl> ParseRegDecl();
   Result<AssignStmt> ParseAssignStmt();
+  Result<AlwaysBlock> ParseAlwaysBlock();
+  Result<std::unique_ptr<ProceduralStmt>> ParseProceduralStmt();
+  Result<ProceduralAssignStmt> ParseProceduralAssignStmt();
   Result<Expression> ParseExpression();
   Result<Expression> ParseBitwiseOrExpression();
   Result<Expression> ParseBitwiseXorExpression();

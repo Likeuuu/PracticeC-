@@ -1,5 +1,6 @@
 #include "mnf/parser/parser.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -104,12 +105,30 @@ Result<std::unique_ptr<ModuleDecl>> Parser::ParseModule() {
       continue;
     }
 
+    if (current_.kind == TokenKind::Reg) {
+      auto reg_decl = ParseRegDecl();
+      if (!reg_decl.Ok()) {
+        return Result<std::unique_ptr<ModuleDecl>>{std::nullopt, {}};
+      }
+      module->reg_decls.push_back(std::move(*reg_decl.value));
+      continue;
+    }
+
     if (current_.kind == TokenKind::Assign) {
       auto assign_stmt = ParseAssignStmt();
       if (!assign_stmt.Ok()) {
         return Result<std::unique_ptr<ModuleDecl>>{std::nullopt, {}};
       }
       module->assign_stmts.push_back(std::move(*assign_stmt.value));
+      continue;
+    }
+
+    if (current_.kind == TokenKind::Always) {
+      auto always_block = ParseAlwaysBlock();
+      if (!always_block.Ok()) {
+        return Result<std::unique_ptr<ModuleDecl>>{std::nullopt, {}};
+      }
+      module->always_blocks.push_back(std::move(*always_block.value));
       continue;
     }
 
@@ -187,6 +206,30 @@ Result<WireDecl> Parser::ParseWireDecl() {
   return Result<WireDecl>{std::move(decl), {}};
 }
 
+Result<RegDecl> Parser::ParseRegDecl() {
+  RegDecl decl;
+  decl.location = current_.location;
+
+  if (!Match(TokenKind::Reg)) {
+    diagnostics_.push_back(Diagnostic{DiagnosticLevel::Error,
+                                      "Expected 'reg' declaration",
+                                      current_.location});
+    return Result<RegDecl>{std::nullopt, {}};
+  }
+
+  auto names = ParseIdentifierList();
+  if (!names.Ok()) {
+    return Result<RegDecl>{std::nullopt, {}};
+  }
+  decl.names = std::move(*names.value);
+
+  if (!Expect(TokenKind::Semicolon, "Expected ';' after reg declaration")) {
+    return Result<RegDecl>{std::nullopt, {}};
+  }
+
+  return Result<RegDecl>{std::move(decl), {}};
+}
+
 Result<AssignStmt> Parser::ParseAssignStmt() {
   AssignStmt stmt;
   stmt.location = current_.location;
@@ -219,6 +262,82 @@ Result<AssignStmt> Parser::ParseAssignStmt() {
   }
 
   return Result<AssignStmt>{std::move(stmt), {}};
+}
+
+Result<AlwaysBlock> Parser::ParseAlwaysBlock() {
+  AlwaysBlock block;
+  block.location = current_.location;
+
+  if (!Match(TokenKind::Always)) {
+    diagnostics_.push_back(Diagnostic{DiagnosticLevel::Error,
+                                      "Expected 'always' block",
+                                      current_.location});
+    return Result<AlwaysBlock>{std::nullopt, {}};
+  }
+
+  auto body = ParseProceduralStmt();
+  if (!body.Ok()) {
+    return Result<AlwaysBlock>{std::nullopt, {}};
+  }
+  block.body = std::move(*body.value);
+  return Result<AlwaysBlock>{std::move(block), {}};
+}
+
+Result<std::unique_ptr<ProceduralStmt>> Parser::ParseProceduralStmt() {
+  auto stmt = std::make_unique<ProceduralStmt>();
+  stmt->location = current_.location;
+
+  if (Match(TokenKind::Begin)) {
+    stmt->kind = ProceduralStmt::Kind::Block;
+    while (current_.kind != TokenKind::End && current_.kind != TokenKind::EndOfFile) {
+      auto nested = ParseProceduralStmt();
+      if (!nested.Ok()) {
+        return Result<std::unique_ptr<ProceduralStmt>>{std::nullopt, {}};
+      }
+      stmt->statements.push_back(std::move(*nested.value));
+    }
+
+    if (!Expect(TokenKind::End, "Expected 'end' to close procedural block")) {
+      return Result<std::unique_ptr<ProceduralStmt>>{std::nullopt, {}};
+    }
+    return Result<std::unique_ptr<ProceduralStmt>>{std::move(stmt), {}};
+  }
+
+  auto assign_stmt = ParseProceduralAssignStmt();
+  if (!assign_stmt.Ok()) {
+    return Result<std::unique_ptr<ProceduralStmt>>{std::nullopt, {}};
+  }
+
+  stmt->kind = ProceduralStmt::Kind::Assignment;
+  stmt->assign_stmt = std::make_unique<ProceduralAssignStmt>(std::move(*assign_stmt.value));
+  return Result<std::unique_ptr<ProceduralStmt>>{std::move(stmt), {}};
+}
+
+Result<ProceduralAssignStmt> Parser::ParseProceduralAssignStmt() {
+  ProceduralAssignStmt stmt;
+  stmt.location = current_.location;
+
+  Token lhs_token;
+  if (!ExpectIdentifier("Expected identifier on left-hand side of procedural assignment", &lhs_token)) {
+    return Result<ProceduralAssignStmt>{std::nullopt, {}};
+  }
+  stmt.lhs = lhs_token.lexeme;
+
+  if (!Expect(TokenKind::Equal, "Expected '=' in procedural assignment")) {
+    return Result<ProceduralAssignStmt>{std::nullopt, {}};
+  }
+
+  auto rhs = ParseExpression();
+  if (!rhs.Ok()) {
+    return Result<ProceduralAssignStmt>{std::nullopt, {}};
+  }
+  stmt.rhs = std::move(*rhs.value);
+
+  if (!Expect(TokenKind::Semicolon, "Expected ';' after procedural assignment")) {
+    return Result<ProceduralAssignStmt>{std::nullopt, {}};
+  }
+
+  return Result<ProceduralAssignStmt>{std::move(stmt), {}};
 }
 
 Result<Expression> Parser::ParseExpression() {

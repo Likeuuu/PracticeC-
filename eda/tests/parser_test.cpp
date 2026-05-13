@@ -82,3 +82,49 @@ endmodule
   EXPECT_EQ(expr.rhs->rhs->kind, mnf::Expression::Kind::Number);
   EXPECT_EQ(expr.rhs->rhs->text, "1");
 }
+
+TEST(ParserTest, ParsesRegDeclsAndAlwaysBeginEndBlock) {
+  const std::string input = R"(module top(a, y);
+  input a;
+  output y;
+  reg state, shadow;
+  always begin
+    state = a;
+    y = state;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "parser_always_test.nl");
+  mnf::Parser parser(lexer);
+  auto result = parser.ParseProgram();
+
+  ASSERT_TRUE(result.Ok());
+  ASSERT_EQ(result.value->modules.size(), 1u);
+  const mnf::ModuleDecl& top = *result.value->modules[0];
+
+  ASSERT_EQ(top.reg_decls.size(), 1u);
+  ASSERT_EQ(top.reg_decls[0].names.size(), 2u);
+  EXPECT_EQ(top.reg_decls[0].names[0], "state");
+  EXPECT_EQ(top.reg_decls[0].names[1], "shadow");
+
+  ASSERT_EQ(top.always_blocks.size(), 1u);
+  ASSERT_NE(top.always_blocks[0].body, nullptr);
+  EXPECT_EQ(top.always_blocks[0].body->kind, mnf::ProceduralStmt::Kind::Block);
+  ASSERT_EQ(top.always_blocks[0].body->statements.size(), 2u);
+
+  const auto& first_stmt = top.always_blocks[0].body->statements[0];
+  ASSERT_NE(first_stmt, nullptr);
+  EXPECT_EQ(first_stmt->kind, mnf::ProceduralStmt::Kind::Assignment);
+  ASSERT_NE(first_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(first_stmt->assign_stmt->lhs, "state");
+  EXPECT_EQ(first_stmt->assign_stmt->rhs.kind, mnf::Expression::Kind::Identifier);
+  EXPECT_EQ(first_stmt->assign_stmt->rhs.text, "a");
+
+  const auto& second_stmt = top.always_blocks[0].body->statements[1];
+  ASSERT_NE(second_stmt, nullptr);
+  ASSERT_NE(second_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(second_stmt->assign_stmt->lhs, "y");
+  EXPECT_EQ(second_stmt->assign_stmt->rhs.kind, mnf::Expression::Kind::Identifier);
+  EXPECT_EQ(second_stmt->assign_stmt->rhs.text, "state");
+}

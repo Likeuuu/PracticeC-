@@ -27,6 +27,10 @@ struct WireDecl : AstNode {
   std::vector<std::string> names;
 };
 
+struct RegDecl : AstNode {
+  std::vector<std::string> names;
+};
+
 struct Expression : AstNode {
   enum class Kind {
     Identifier,
@@ -46,6 +50,31 @@ struct AssignStmt : AstNode {
   Expression rhs;
 };
 
+struct ProceduralAssignStmt : AstNode {
+  enum class AssignmentKind {
+    Blocking
+  };
+
+  AssignmentKind assignment_kind = AssignmentKind::Blocking;
+  std::string lhs;
+  Expression rhs;
+};
+
+struct ProceduralStmt : AstNode {
+  enum class Kind {
+    Assignment,
+    Block
+  };
+
+  Kind kind = Kind::Assignment;
+  std::unique_ptr<ProceduralAssignStmt> assign_stmt;
+  std::vector<std::unique_ptr<ProceduralStmt>> statements;
+};
+
+struct AlwaysBlock : AstNode {
+  std::unique_ptr<ProceduralStmt> body;
+};
+
 struct NamedConnection : AstNode {
   std::string port_name;
   std::string signal_name;
@@ -62,7 +91,9 @@ struct ModuleDecl : AstNode {
   std::vector<std::string> ports;
   std::vector<PortDecl> port_decls;
   std::vector<WireDecl> wire_decls;
+  std::vector<RegDecl> reg_decls;
   std::vector<AssignStmt> assign_stmts;
+  std::vector<AlwaysBlock> always_blocks;
   std::vector<InstanceDecl> instances;
 };
 

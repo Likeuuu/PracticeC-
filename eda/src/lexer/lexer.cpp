@@ -30,8 +30,16 @@ const char* ToString(TokenKind kind) {
       return "Output";
     case TokenKind::Wire:
       return "Wire";
+    case TokenKind::Reg:
+      return "Reg";
     case TokenKind::Assign:
       return "Assign";
+    case TokenKind::Always:
+      return "Always";
+    case TokenKind::Begin:
+      return "Begin";
+    case TokenKind::End:
+      return "End";
     case TokenKind::Identifier:
       return "Identifier";
     case TokenKind::Number:
@@ -139,7 +147,11 @@ Token Lexer::LexToken() {
         {"input", TokenKind::Input},
         {"output", TokenKind::Output},
         {"wire", TokenKind::Wire},
+        {"reg", TokenKind::Reg},
         {"assign", TokenKind::Assign},
+        {"always", TokenKind::Always},
+        {"begin", TokenKind::Begin},
+        {"end", TokenKind::End},
     };
 
     const auto it = keywords.find(lexeme);
