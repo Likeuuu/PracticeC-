@@ -70,10 +70,78 @@ const char* ScopeKindToString(ResolvedScopeSymbolIR::Kind kind) {
   switch (kind) {
     case ResolvedScopeSymbolIR::Kind::Port:
       return "port";
+    case ResolvedScopeSymbolIR::Kind::Reg:
+      return "reg";
     case ResolvedScopeSymbolIR::Kind::Wire:
     default:
       return "wire";
   }
+}
+
+const char* NetKindToString(ResolvedNetIR::Kind kind) {
+  switch (kind) {
+    case ResolvedNetIR::Kind::Port:
+      return "port";
+    case ResolvedNetIR::Kind::Reg:
+      return "reg";
+    case ResolvedNetIR::Kind::Wire:
+    default:
+      return "wire";
+  }
+}
+
+const char* ProceduralAssignKindToString(ResolvedProceduralAssignIR::AssignmentKind kind) {
+  switch (kind) {
+    case ResolvedProceduralAssignIR::AssignmentKind::NonBlocking:
+      return "nonblocking";
+    case ResolvedProceduralAssignIR::AssignmentKind::Blocking:
+    default:
+      return "blocking";
+  }
+}
+
+void WriteResolvedProcessStmt(std::ostringstream& oss, const ResolvedProcessStmtIR& stmt) {
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    oss << "{\"kind\": \"assignment\"";
+    if (stmt.assign_stmt != nullptr) {
+      oss << ", \"assignment_kind\": \"" << ProceduralAssignKindToString(stmt.assign_stmt->assignment_kind) << "\"";
+      oss << ", \"target\": " << stmt.assign_stmt->target_net_id;
+      oss << ", \"target_name\": \"" << stmt.assign_stmt->target_name_view << "\"";
+      oss << ", \"expr\": ";
+      WriteResolvedExpr(oss, stmt.assign_stmt->rhs_expr);
+    }
+    oss << "}";
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    oss << "{\"kind\": \"if\"";
+    if (stmt.if_stmt != nullptr) {
+      oss << ", \"condition\": ";
+      WriteResolvedExpr(oss, stmt.if_stmt->condition_expr);
+      oss << ", \"then\": ";
+      if (stmt.if_stmt->then_stmt != nullptr) {
+        WriteResolvedProcessStmt(oss, *stmt.if_stmt->then_stmt);
+      } else {
+        oss << "null";
+      }
+    }
+    oss << "}";
+    return;
+  }
+
+  oss << "{\"kind\": \"block\", \"statements\": [";
+  for (std::size_t i = 0; i < stmt.statements.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    if (stmt.statements[i] != nullptr) {
+      WriteResolvedProcessStmt(oss, *stmt.statements[i]);
+    } else {
+      oss << "null";
+    }
+  }
+  oss << "]}";
 }
 
 }  // namespace
@@ -123,7 +191,7 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     oss << "{\"id\": " << design.top_graph.nets[i].id
         << ", \"name\": \"" << design.top_graph.nets[i].name
         << "\", \"qualified_name\": \"" << design.top_graph.nets[i].qualified_name
-        << "\", \"kind\": \"" << (design.top_graph.nets[i].kind == ResolvedNetIR::Kind::Port ? "port" : "wire")
+        << "\", \"kind\": \"" << NetKindToString(design.top_graph.nets[i].kind)
         << "\"}";
   }
   oss << "], ";
@@ -157,6 +225,20 @@ std::string JsonWriter::Write(const ElaboratedDesign& design) const {
     oss << "{\"instance_path\": \"" << design.top_graph.assigns[i].instance_path
         << "\", \"target\": " << design.top_graph.assigns[i].target_net_id << ", \"expr\": ";
     WriteResolvedExpr(oss, design.top_graph.assigns[i].rhs_expr);
+    oss << "}";
+  }
+  oss << "], ";
+  oss << "\"always_blocks\": [";
+  for (std::size_t i = 0; i < design.top_graph.always_blocks.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << "{\"instance_path\": \"" << design.top_graph.always_blocks[i].instance_path << "\", \"body\": ";
+    if (design.top_graph.always_blocks[i].body != nullptr) {
+      WriteResolvedProcessStmt(oss, *design.top_graph.always_blocks[i].body);
+    } else {
+      oss << "null";
+    }
     oss << "}";
   }
   oss << "], ";

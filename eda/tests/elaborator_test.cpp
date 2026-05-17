@@ -163,3 +163,75 @@ endmodule
   EXPECT_EQ(design_result.value->top_graph.instance_bindings[2].signal_net_id, 5);
   EXPECT_EQ(design_result.value->top_graph.instance_bindings[3].signal_net_id, 3);
 }
+
+TEST(ElaboratorTest, ResolvesAlwaysBlocksIntoProcessIr) {
+  const std::string input = R"(module top(in1, in2, out1);
+  input in1;
+  input in2;
+  output out1;
+  reg state;
+  always begin
+    if (in1) state <= in2;
+    out1 = state;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "elaborator_process_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_TRUE(diagnostics.empty());
+
+  mnf::Elaborator elaborator;
+  auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "top");
+  ASSERT_TRUE(design_result.Ok());
+
+  ASSERT_EQ(design_result.value->top_graph.nets.size(), 4u);
+  EXPECT_EQ(design_result.value->top_graph.nets[3].qualified_name, "state");
+  EXPECT_EQ(design_result.value->top_graph.nets[3].kind, mnf::ResolvedNetIR::Kind::Reg);
+
+  const auto* top_scope = FindScopeFrame(design_result.value->top_graph, "");
+  ASSERT_NE(top_scope, nullptr);
+  const auto* state_symbol = FindScopeSymbol(*top_scope, "state");
+  ASSERT_NE(state_symbol, nullptr);
+  EXPECT_EQ(state_symbol->kind, mnf::ResolvedScopeSymbolIR::Kind::Reg);
+  EXPECT_EQ(state_symbol->net_id, 3);
+  EXPECT_EQ(state_symbol->qualified_name, "state");
+
+  ASSERT_EQ(design_result.value->top_graph.always_blocks.size(), 1u);
+  const auto& always_block = design_result.value->top_graph.always_blocks[0];
+  EXPECT_EQ(always_block.instance_path, "");
+  ASSERT_NE(always_block.body, nullptr);
+  EXPECT_EQ(always_block.body->kind, mnf::ResolvedProcessStmtIR::Kind::Block);
+  ASSERT_EQ(always_block.body->statements.size(), 2u);
+
+  const auto& if_stmt = always_block.body->statements[0];
+  ASSERT_NE(if_stmt, nullptr);
+  EXPECT_EQ(if_stmt->kind, mnf::ResolvedProcessStmtIR::Kind::If);
+  ASSERT_NE(if_stmt->if_stmt, nullptr);
+  EXPECT_EQ(if_stmt->if_stmt->condition_expr.kind, mnf::ResolvedExprIR::Kind::Net);
+  EXPECT_EQ(if_stmt->if_stmt->condition_expr.net_id, 0);
+  ExpectNetIds(if_stmt->if_stmt->condition_source_net_ids, {0});
+  ASSERT_NE(if_stmt->if_stmt->then_stmt, nullptr);
+  ASSERT_NE(if_stmt->if_stmt->then_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->assign_stmt->assignment_kind,
+            mnf::ResolvedProceduralAssignIR::AssignmentKind::NonBlocking);
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->assign_stmt->target_net_id, 3);
+  EXPECT_EQ(if_stmt->if_stmt->then_stmt->assign_stmt->target_name_view, "state");
+  ExpectNetIds(if_stmt->if_stmt->then_stmt->assign_stmt->source_net_ids, {1});
+
+  const auto& assign_stmt = always_block.body->statements[1];
+  ASSERT_NE(assign_stmt, nullptr);
+  EXPECT_EQ(assign_stmt->kind, mnf::ResolvedProcessStmtIR::Kind::Assignment);
+  ASSERT_NE(assign_stmt->assign_stmt, nullptr);
+  EXPECT_EQ(assign_stmt->assign_stmt->assignment_kind,
+            mnf::ResolvedProceduralAssignIR::AssignmentKind::Blocking);
+  EXPECT_EQ(assign_stmt->assign_stmt->target_net_id, 2);
+  EXPECT_EQ(assign_stmt->assign_stmt->target_name_view, "out1");
+  ExpectNetIds(assign_stmt->assign_stmt->source_net_ids, {3});
+}

@@ -18,6 +18,8 @@ const char* NetKindToString(ResolvedNetIR::Kind kind) {
   switch (kind) {
     case ResolvedNetIR::Kind::Port:
       return "port";
+    case ResolvedNetIR::Kind::Reg:
+      return "reg";
     case ResolvedNetIR::Kind::Wire:
     default:
       return "wire";
@@ -28,9 +30,21 @@ const char* ScopeKindToString(ResolvedScopeSymbolIR::Kind kind) {
   switch (kind) {
     case ResolvedScopeSymbolIR::Kind::Port:
       return "port";
+    case ResolvedScopeSymbolIR::Kind::Reg:
+      return "reg";
     case ResolvedScopeSymbolIR::Kind::Wire:
     default:
       return "wire";
+  }
+}
+
+const char* ProceduralAssignKindToString(ResolvedProceduralAssignIR::AssignmentKind kind) {
+  switch (kind) {
+    case ResolvedProceduralAssignIR::AssignmentKind::NonBlocking:
+      return "<=";
+    case ResolvedProceduralAssignIR::AssignmentKind::Blocking:
+    default:
+      return "=";
   }
 }
 
@@ -52,6 +66,40 @@ std::string FormatResolvedExpr(const ResolvedExprIR& expr) {
   }
 
   return "<expr?>";
+}
+
+void WriteResolvedProcessStmt(std::ostringstream& oss,
+                              const ResolvedProcessStmtIR& stmt,
+                              int depth) {
+  const std::string indent(static_cast<std::size_t>(depth) * 2, ' ');
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    if (stmt.assign_stmt != nullptr) {
+      oss << indent
+          << "assign " << stmt.assign_stmt->target_name_view
+          << " " << ProceduralAssignKindToString(stmt.assign_stmt->assignment_kind)
+          << " " << FormatResolvedExpr(stmt.assign_stmt->rhs_expr)
+          << "\n";
+    }
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    if (stmt.if_stmt != nullptr) {
+      oss << indent << "if " << FormatResolvedExpr(stmt.if_stmt->condition_expr) << "\n";
+      if (stmt.if_stmt->then_stmt != nullptr) {
+        WriteResolvedProcessStmt(oss, *stmt.if_stmt->then_stmt, depth + 1);
+      }
+    }
+    return;
+  }
+
+  oss << indent << "begin\n";
+  for (const auto& nested : stmt.statements) {
+    if (nested != nullptr) {
+      WriteResolvedProcessStmt(oss, *nested, depth + 1);
+    }
+  }
+  oss << indent << "end\n";
 }
 
 }  // namespace
@@ -93,6 +141,13 @@ std::string TextWriter::WriteSummary(const ElaboratedDesign& design) const {
         << " target=" << assign.target_net_id
         << " expr=" << FormatResolvedExpr(assign.rhs_expr)
         << "\n";
+  }
+  oss << "Resolved hierarchical always blocks: " << design.top_graph.always_blocks.size() << "\n";
+  for (const auto& always_block : design.top_graph.always_blocks) {
+    oss << "  always@" << (always_block.instance_path.empty() ? "<top>" : always_block.instance_path) << "\n";
+    if (always_block.body != nullptr) {
+      WriteResolvedProcessStmt(oss, *always_block.body, 2);
+    }
   }
   oss << "Resolved hierarchical instance bindings: " << design.top_graph.instance_bindings.size() << "\n";
   for (const auto& binding : design.top_graph.instance_bindings) {

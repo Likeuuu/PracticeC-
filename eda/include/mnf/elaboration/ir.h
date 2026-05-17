@@ -31,7 +31,8 @@ struct ModuleDependencyIR {
 struct ResolvedNetIR {
   enum class Kind {
     Port,
-    Wire
+    Wire,
+    Reg
   };
 
   int id = -1;
@@ -93,6 +94,121 @@ struct ResolvedAssignIR {
   std::vector<int> source_net_ids;
 };
 
+struct ResolvedProceduralAssignIR {
+  enum class AssignmentKind {
+    Blocking,
+    NonBlocking
+  };
+
+  AssignmentKind assignment_kind = AssignmentKind::Blocking;
+  int target_net_id = -1;
+  std::string target_name_view;
+  ResolvedExprIR rhs_expr;
+  std::vector<int> source_net_ids;
+};
+
+struct ResolvedIfIR;
+
+struct ResolvedProcessStmtIR {
+  enum class Kind {
+    Assignment,
+    Block,
+    If
+  };
+
+  Kind kind = Kind::Assignment;
+  std::unique_ptr<ResolvedProceduralAssignIR> assign_stmt;
+  std::unique_ptr<ResolvedIfIR> if_stmt;
+  std::vector<std::unique_ptr<ResolvedProcessStmtIR>> statements;
+
+  ResolvedProcessStmtIR() = default;
+
+  ResolvedProcessStmtIR(const ResolvedProcessStmtIR& other) : kind(other.kind) {
+    if (other.assign_stmt != nullptr) {
+      assign_stmt = std::make_unique<ResolvedProceduralAssignIR>(*other.assign_stmt);
+    }
+    if (other.if_stmt != nullptr) {
+      if_stmt = std::make_unique<ResolvedIfIR>(*other.if_stmt);
+    }
+    for (const auto& stmt : other.statements) {
+      statements.push_back(stmt != nullptr ? std::make_unique<ResolvedProcessStmtIR>(*stmt) : nullptr);
+    }
+  }
+
+  ResolvedProcessStmtIR& operator=(const ResolvedProcessStmtIR& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    kind = other.kind;
+    assign_stmt = other.assign_stmt != nullptr ? std::make_unique<ResolvedProceduralAssignIR>(*other.assign_stmt) : nullptr;
+    if_stmt = other.if_stmt != nullptr ? std::make_unique<ResolvedIfIR>(*other.if_stmt) : nullptr;
+    statements.clear();
+    for (const auto& stmt : other.statements) {
+      statements.push_back(stmt != nullptr ? std::make_unique<ResolvedProcessStmtIR>(*stmt) : nullptr);
+    }
+    return *this;
+  }
+
+  ResolvedProcessStmtIR(ResolvedProcessStmtIR&&) noexcept = default;
+  ResolvedProcessStmtIR& operator=(ResolvedProcessStmtIR&&) noexcept = default;
+};
+
+struct ResolvedIfIR {
+  ResolvedExprIR condition_expr;
+  std::vector<int> condition_source_net_ids;
+  std::unique_ptr<ResolvedProcessStmtIR> then_stmt;
+
+  ResolvedIfIR() = default;
+
+  ResolvedIfIR(const ResolvedIfIR& other)
+      : condition_expr(other.condition_expr), condition_source_net_ids(other.condition_source_net_ids) {
+    if (other.then_stmt != nullptr) {
+      then_stmt = std::make_unique<ResolvedProcessStmtIR>(*other.then_stmt);
+    }
+  }
+
+  ResolvedIfIR& operator=(const ResolvedIfIR& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    condition_expr = other.condition_expr;
+    condition_source_net_ids = other.condition_source_net_ids;
+    then_stmt = other.then_stmt != nullptr ? std::make_unique<ResolvedProcessStmtIR>(*other.then_stmt) : nullptr;
+    return *this;
+  }
+
+  ResolvedIfIR(ResolvedIfIR&&) noexcept = default;
+  ResolvedIfIR& operator=(ResolvedIfIR&&) noexcept = default;
+};
+
+struct ResolvedAlwaysIR {
+  std::string instance_path;
+  std::unique_ptr<ResolvedProcessStmtIR> body;
+
+  ResolvedAlwaysIR() = default;
+
+  ResolvedAlwaysIR(const ResolvedAlwaysIR& other) : instance_path(other.instance_path) {
+    if (other.body != nullptr) {
+      body = std::make_unique<ResolvedProcessStmtIR>(*other.body);
+    }
+  }
+
+  ResolvedAlwaysIR& operator=(const ResolvedAlwaysIR& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    instance_path = other.instance_path;
+    body = other.body != nullptr ? std::make_unique<ResolvedProcessStmtIR>(*other.body) : nullptr;
+    return *this;
+  }
+
+  ResolvedAlwaysIR(ResolvedAlwaysIR&&) noexcept = default;
+  ResolvedAlwaysIR& operator=(ResolvedAlwaysIR&&) noexcept = default;
+};
+
 struct ResolvedInstanceBindingIR {
   std::string instance_path;
   std::string module_name;
@@ -103,7 +219,8 @@ struct ResolvedInstanceBindingIR {
 struct ResolvedScopeSymbolIR {
   enum class Kind {
     Port,
-    Wire
+    Wire,
+    Reg
   };
 
   std::string name;
@@ -122,6 +239,7 @@ struct ResolvedScopeFrameIR {
 struct ResolvedNetGraphIR {
   std::vector<ResolvedNetIR> nets;
   std::vector<ResolvedAssignIR> assigns;
+  std::vector<ResolvedAlwaysIR> always_blocks;
   std::vector<ResolvedInstanceBindingIR> instance_bindings;
   std::vector<ResolvedScopeFrameIR> scope_frames;
 };

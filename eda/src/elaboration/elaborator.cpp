@@ -16,7 +16,8 @@ namespace {
 struct ScopeSymbol {
   enum class Kind {
     Port,
-    Wire
+    Wire,
+    Reg
   };
 
   Kind kind = Kind::Wire;
@@ -69,9 +70,22 @@ ResolvedScopeSymbolIR::Kind ToResolvedScopeKind(ScopeSymbol::Kind kind) {
   switch (kind) {
     case ScopeSymbol::Kind::Port:
       return ResolvedScopeSymbolIR::Kind::Port;
+    case ScopeSymbol::Kind::Reg:
+      return ResolvedScopeSymbolIR::Kind::Reg;
     case ScopeSymbol::Kind::Wire:
     default:
       return ResolvedScopeSymbolIR::Kind::Wire;
+  }
+}
+
+ResolvedProceduralAssignIR::AssignmentKind ToResolvedAssignKind(
+    ProceduralAssignStmt::AssignmentKind kind) {
+  switch (kind) {
+    case ProceduralAssignStmt::AssignmentKind::NonBlocking:
+      return ResolvedProceduralAssignIR::AssignmentKind::NonBlocking;
+    case ProceduralAssignStmt::AssignmentKind::Blocking:
+    default:
+      return ResolvedProceduralAssignIR::AssignmentKind::Blocking;
   }
 }
 
@@ -253,7 +267,7 @@ void BindTopPorts(const ModuleDecl& top_module,
   }
 }
 
-void AddLocalWiresToScope(const ModuleDecl& module,
+void AddLocalDeclsToScope(const ModuleDecl& module,
                           const std::string& instance_path,
                           int* next_net_id,
                           ScopeFrame* scope,
@@ -269,13 +283,80 @@ void AddLocalWiresToScope(const ModuleDecl& module,
       graph->nets.push_back(ResolvedNetIR{net_id, wire_name, qualified_name, ResolvedNetIR::Kind::Wire});
     }
   }
+
+  for (const auto& reg_decl : module.reg_decls) {
+    for (const auto& reg_name : reg_decl.names) {
+      if (scope->ContainsLocal(reg_name)) {
+        continue;
+      }
+      const int net_id = (*next_net_id)++;
+      const std::string qualified_name = JoinPath(instance_path, reg_name);
+      scope->BindLocal(reg_name, ScopeSymbol::Kind::Reg, net_id, reg_name, qualified_name);
+      graph->nets.push_back(ResolvedNetIR{net_id, reg_name, qualified_name, ResolvedNetIR::Kind::Reg});
+    }
+  }
+}
+
+std::unique_ptr<ResolvedProcessStmtIR> ResolveProceduralStmt(const ProceduralStmt& stmt,
+                                                             const ScopeFrame& scope);
+
+ResolvedProceduralAssignIR ResolveProceduralAssign(const ProceduralAssignStmt& stmt,
+                                                   const ScopeFrame& scope) {
+  ResolvedProceduralAssignIR resolved_stmt;
+  resolved_stmt.assignment_kind = ToResolvedAssignKind(stmt.assignment_kind);
+  ScopeSymbol target_symbol;
+  if (scope.LookupSymbol(stmt.lhs, &target_symbol)) {
+    resolved_stmt.target_net_id = target_symbol.net_id;
+    resolved_stmt.target_name_view = target_symbol.qualified_name;
+  }
+  resolved_stmt.rhs_expr = ResolveExpression(stmt.rhs, scope);
+  resolved_stmt.source_net_ids = BuildSourceNetIds(resolved_stmt.rhs_expr);
+  return resolved_stmt;
+}
+
+ResolvedIfIR ResolveProceduralIf(const ProceduralIfStmt& stmt, const ScopeFrame& scope) {
+  ResolvedIfIR resolved_if;
+  resolved_if.condition_expr = ResolveExpression(stmt.condition, scope);
+  resolved_if.condition_source_net_ids = BuildSourceNetIds(resolved_if.condition_expr);
+  if (stmt.then_stmt != nullptr) {
+    resolved_if.then_stmt = ResolveProceduralStmt(*stmt.then_stmt, scope);
+  }
+  return resolved_if;
+}
+
+std::unique_ptr<ResolvedProcessStmtIR> ResolveProceduralStmt(const ProceduralStmt& stmt,
+                                                             const ScopeFrame& scope) {
+  auto resolved_stmt = std::make_unique<ResolvedProcessStmtIR>();
+  resolved_stmt->kind = static_cast<ResolvedProcessStmtIR::Kind>(stmt.kind);
+
+  if (stmt.kind == ProceduralStmt::Kind::Assignment) {
+    if (stmt.assign_stmt != nullptr) {
+      resolved_stmt->assign_stmt = std::make_unique<ResolvedProceduralAssignIR>(
+          ResolveProceduralAssign(*stmt.assign_stmt, scope));
+    }
+    return resolved_stmt;
+  }
+
+  if (stmt.kind == ProceduralStmt::Kind::If) {
+    if (stmt.if_stmt != nullptr) {
+      resolved_stmt->if_stmt = std::make_unique<ResolvedIfIR>(ResolveProceduralIf(*stmt.if_stmt, scope));
+    }
+    return resolved_stmt;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      resolved_stmt->statements.push_back(ResolveProceduralStmt(*nested_stmt, scope));
+    }
+  }
+  return resolved_stmt;
 }
 
 void BuildResolvedGraphRecursive(const SymbolTable& symbols,
                                  ScopeFrame* scope,
                                  int* next_net_id,
                                  ResolvedNetGraphIR* graph) {
-  AddLocalWiresToScope(*scope->module, scope->instance_path, next_net_id, scope, graph);
+  AddLocalDeclsToScope(*scope->module, scope->instance_path, next_net_id, scope, graph);
   CaptureScopeFrame(*scope, graph);
 
   for (const auto& assign_stmt : scope->module->assign_stmts) {
@@ -289,6 +370,15 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
     resolved_assign.rhs_expr = ResolveExpression(assign_stmt.rhs, *scope);
     resolved_assign.source_net_ids = BuildSourceNetIds(resolved_assign.rhs_expr);
     graph->assigns.push_back(std::move(resolved_assign));
+  }
+
+  for (const auto& always_block : scope->module->always_blocks) {
+    ResolvedAlwaysIR resolved_always;
+    resolved_always.instance_path = scope->instance_path;
+    if (always_block.body != nullptr) {
+      resolved_always.body = ResolveProceduralStmt(*always_block.body, *scope);
+    }
+    graph->always_blocks.push_back(std::move(resolved_always));
   }
 
   for (const auto& instance : scope->module->instances) {
