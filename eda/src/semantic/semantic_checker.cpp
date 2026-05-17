@@ -13,16 +13,28 @@ std::vector<std::string> CollectDeclaredSignals(const ModuleDecl& module) {
   for (const auto& wire_decl : module.wire_decls) {
     signals.insert(signals.end(), wire_decl.names.begin(), wire_decl.names.end());
   }
+  for (const auto& reg_decl : module.reg_decls) {
+    signals.insert(signals.end(), reg_decl.names.begin(), reg_decl.names.end());
+  }
   return signals;
 }
 
-std::vector<std::string> CollectDeclaredWire(const ModuleDecl& module) {
+std::vector<std::string> CollectDeclaredWires(const ModuleDecl& module) {
   std::vector<std::string> wire_names;
   for (const auto& wire_decl : module.wire_decls) {
     wire_names.insert(wire_names.end(), wire_decl.names.begin(), wire_decl.names.end());
   }
 
   return wire_names;
+}
+
+std::vector<std::string> CollectDeclaredRegs(const ModuleDecl& module) {
+  std::vector<std::string> reg_names;
+  for (const auto& reg_decl : module.reg_decls) {
+    reg_names.insert(reg_names.end(), reg_decl.names.begin(), reg_decl.names.end());
+  }
+
+  return reg_names;
 }
 
 std::vector<std::string> CollectDeclaredPorts(const ModuleDecl& module) {
@@ -39,11 +51,12 @@ bool Contains(const std::vector<std::string>& names, const std::string& name) {
 
 void ValidateExpression(const Expression& expr,
                         const std::vector<std::string>& declared_signals,
-                        std::vector<Diagnostic>& diagnostics) {
+                        std::vector<Diagnostic>& diagnostics,
+                        const char* undeclared_message_prefix) {
   if (expr.kind == Expression::Kind::Identifier) {
     if (!Contains(declared_signals, expr.text)) {
       diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
-                                       "Assign source is not declared: " + expr.text,
+                                       std::string(undeclared_message_prefix) + expr.text,
                                        expr.location});
     }
     return;
@@ -51,17 +64,63 @@ void ValidateExpression(const Expression& expr,
 
   if (expr.kind == Expression::Kind::Unary) {
     if (expr.rhs != nullptr) {
-      ValidateExpression(*expr.rhs, declared_signals, diagnostics);
+      ValidateExpression(*expr.rhs, declared_signals, diagnostics, undeclared_message_prefix);
     }
     return;
   }
 
   if (expr.kind == Expression::Kind::Binary) {
     if (expr.lhs != nullptr) {
-      ValidateExpression(*expr.lhs, declared_signals, diagnostics);
+      ValidateExpression(*expr.lhs, declared_signals, diagnostics, undeclared_message_prefix);
     }
     if (expr.rhs != nullptr) {
-      ValidateExpression(*expr.rhs, declared_signals, diagnostics);
+      ValidateExpression(*expr.rhs, declared_signals, diagnostics, undeclared_message_prefix);
+    }
+  }
+}
+
+void ValidateProceduralStmt(const ProceduralStmt& stmt,
+                            const std::vector<std::string>& declared_signals,
+                            std::vector<Diagnostic>& diagnostics) {
+  if (stmt.kind == ProceduralStmt::Kind::Assignment) {
+    if (stmt.assign_stmt == nullptr) {
+      return;
+    }
+
+    if (!Contains(declared_signals, stmt.assign_stmt->lhs)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Procedural assignment target is not declared: " + stmt.assign_stmt->lhs,
+                                       stmt.assign_stmt->location});
+    }
+
+    ValidateExpression(stmt.assign_stmt->rhs,
+                       declared_signals,
+                       diagnostics,
+                       "Procedural assignment source is not declared: ");
+    return;
+  }
+
+  if (stmt.kind == ProceduralStmt::Kind::If) {
+    if (stmt.if_stmt == nullptr) {
+      return;
+    }
+
+    ValidateExpression(stmt.if_stmt->condition,
+                       declared_signals,
+                       diagnostics,
+                       "Procedural if condition signal is not declared: ");
+
+    if (stmt.if_stmt->then_stmt != nullptr) {
+      ValidateProceduralStmt(*stmt.if_stmt->then_stmt, declared_signals, diagnostics);
+    }
+    return;
+  }
+
+  if (stmt.kind == ProceduralStmt::Kind::Block) {
+    for (const auto& nested_stmt : stmt.statements) {
+      if (nested_stmt != nullptr) {
+        ValidateProceduralStmt(*nested_stmt, declared_signals, diagnostics);
+      }
     }
   }
 }
@@ -101,7 +160,8 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                   std::vector<Diagnostic>& diagnostics) const {
   const auto declared_signals = CollectDeclaredSignals(module);
   const auto declared_ports = CollectDeclaredPorts(module);
-  const auto declared_wires = CollectDeclaredWire(module);
+  const auto declared_wires = CollectDeclaredWires(module);
+  const auto declared_regs = CollectDeclaredRegs(module);
 
   std::unordered_set<std::string> seen_declared_ports;
   for (const auto& port_name : declared_ports) {
@@ -138,6 +198,27 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                        "Wire name conflicts with module port: " + wire_name,
                                        module.location});
     }
+
+    if (Contains(declared_regs, wire_name)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Wire name conflicts with reg declaration: " + wire_name,
+                                       module.location});
+    }
+  }
+
+  std::unordered_set<std::string> seen_declared_regs;
+  for (const auto& reg_name : declared_regs) {
+    if (!seen_declared_regs.insert(reg_name).second) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Duplicate reg declaration: " + reg_name,
+                                       module.location});
+    }
+
+    if (Contains(module.ports, reg_name)) {
+      diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                       "Reg name conflicts with module port: " + reg_name,
+                                       module.location});
+    }
   }
 
   for (const auto& assign_stmt : module.assign_stmts) {
@@ -147,7 +228,16 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
                                        assign_stmt.location});
     }
 
-    ValidateExpression(assign_stmt.rhs, declared_signals, diagnostics);
+    ValidateExpression(assign_stmt.rhs,
+                       declared_signals,
+                       diagnostics,
+                       "Assign source is not declared: ");
+  }
+
+  for (const auto& always_block : module.always_blocks) {
+    if (always_block.body != nullptr) {
+      ValidateProceduralStmt(*always_block.body, declared_signals, diagnostics);
+    }
   }
 
   for (const auto& instance : module.instances) {

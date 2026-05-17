@@ -33,3 +33,36 @@ endmodule
   }
   EXPECT_TRUE(saw_wire_port_conflict);
 }
+
+TEST(SemanticCheckerTest, ReportsRegPortAndWireConflicts) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  wire state;
+  reg in1, state;
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "semantic_checker_reg_conflict_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_FALSE(diagnostics.empty());
+
+  bool saw_reg_port_conflict = false;
+  bool saw_wire_reg_conflict = false;
+  for (const auto& diagnostic : diagnostics) {
+    if (diagnostic.message.find("Reg name conflicts with module port") != std::string::npos) {
+      saw_reg_port_conflict = true;
+    }
+    if (diagnostic.message.find("Wire name conflicts with reg declaration") != std::string::npos) {
+      saw_wire_reg_conflict = true;
+    }
+  }
+  EXPECT_TRUE(saw_reg_port_conflict);
+  EXPECT_TRUE(saw_wire_reg_conflict);
+}

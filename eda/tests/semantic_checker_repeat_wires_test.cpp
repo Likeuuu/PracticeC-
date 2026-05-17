@@ -33,3 +33,30 @@ endmodule
   }
   EXPECT_TRUE(saw_duplicate_wire);
 }
+
+TEST(SemanticCheckerTest, ReportsDuplicateRegDeclarations) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state, state;
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "semantic_checker_repeat_regs_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_FALSE(diagnostics.empty());
+
+  bool saw_duplicate_reg = false;
+  for (const auto& diagnostic : diagnostics) {
+    if (diagnostic.message.find("Duplicate reg declaration") != std::string::npos) {
+      saw_duplicate_reg = true;
+    }
+  }
+  EXPECT_TRUE(saw_duplicate_reg);
+}

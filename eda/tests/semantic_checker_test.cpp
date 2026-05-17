@@ -72,3 +72,45 @@ endmodule
   EXPECT_TRUE(saw_missing_lhs);
   EXPECT_TRUE(saw_missing_rhs);
 }
+
+TEST(SemanticCheckerTest, ReportsUndeclaredSignalsInProceduralStatements) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state;
+  always begin
+    if (missing_cond) state <= in1;
+    missing_lhs = state;
+    out1 = missing_rhs;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "semantic_procedural_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_FALSE(diagnostics.empty());
+
+  bool saw_missing_condition = false;
+  bool saw_missing_lhs = false;
+  bool saw_missing_rhs = false;
+  for (const auto& diagnostic : diagnostics) {
+    if (diagnostic.message.find("Procedural if condition signal is not declared") != std::string::npos) {
+      saw_missing_condition = true;
+    }
+    if (diagnostic.message.find("Procedural assignment target is not declared") != std::string::npos) {
+      saw_missing_lhs = true;
+    }
+    if (diagnostic.message.find("Procedural assignment source is not declared") != std::string::npos) {
+      saw_missing_rhs = true;
+    }
+  }
+  EXPECT_TRUE(saw_missing_condition);
+  EXPECT_TRUE(saw_missing_lhs);
+  EXPECT_TRUE(saw_missing_rhs);
+}
