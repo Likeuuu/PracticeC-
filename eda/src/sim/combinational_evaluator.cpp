@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <queue>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace mnf {
@@ -151,6 +152,93 @@ std::vector<int> BuildEvaluationOrder(const ResolvedNetGraphIR& graph,
   return order;
 }
 
+void EvaluateAssigns(const ResolvedNetGraphIR& graph,
+                     const std::vector<int>& evaluation_order,
+                     std::vector<int>* net_values,
+                     std::vector<Diagnostic>* diagnostics) {
+  for (const int assign_index : evaluation_order) {
+    const auto& assign = graph.assigns[static_cast<std::size_t>(assign_index)];
+    if (assign.target_net_id < 0 || static_cast<std::size_t>(assign.target_net_id) >= net_values->size()) {
+      diagnostics->push_back(MakeEvalError("Assign target net id is invalid"));
+      continue;
+    }
+
+    const int value = EvaluateExpr(assign.rhs_expr, *net_values, diagnostics);
+    if (value == kUnknown) {
+      continue;
+    }
+
+    (*net_values)[static_cast<std::size_t>(assign.target_net_id)] = value;
+  }
+}
+
+void ExecuteProcessStmt(const ResolvedProcessStmtIR& stmt,
+                        std::vector<int>* net_values,
+                        std::unordered_map<int, int>* pending_nonblocking,
+                        std::vector<Diagnostic>* diagnostics) {
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    if (stmt.assign_stmt == nullptr) {
+      return;
+    }
+
+    if (stmt.assign_stmt->target_net_id < 0 ||
+        static_cast<std::size_t>(stmt.assign_stmt->target_net_id) >= net_values->size()) {
+      diagnostics->push_back(MakeEvalError("Procedural assignment target net id is invalid"));
+      return;
+    }
+
+    const int value = EvaluateExpr(stmt.assign_stmt->rhs_expr, *net_values, diagnostics);
+    if (value == kUnknown) {
+      return;
+    }
+
+    if (stmt.assign_stmt->assignment_kind == ResolvedProceduralAssignIR::AssignmentKind::Blocking) {
+      (*net_values)[static_cast<std::size_t>(stmt.assign_stmt->target_net_id)] = value;
+    } else {
+      (*pending_nonblocking)[stmt.assign_stmt->target_net_id] = value;
+    }
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    if (stmt.if_stmt == nullptr) {
+      return;
+    }
+
+    const int condition_value = EvaluateExpr(stmt.if_stmt->condition_expr, *net_values, diagnostics);
+    if (condition_value == 1 && stmt.if_stmt->then_stmt != nullptr) {
+      ExecuteProcessStmt(*stmt.if_stmt->then_stmt, net_values, pending_nonblocking, diagnostics);
+    }
+    return;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      ExecuteProcessStmt(*nested_stmt, net_values, pending_nonblocking, diagnostics);
+    }
+  }
+}
+
+void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
+                         std::vector<int>* net_values,
+                         std::vector<Diagnostic>* diagnostics) {
+  std::unordered_map<int, int> pending_nonblocking;
+
+  for (const auto& always_block : graph.always_blocks) {
+    if (always_block.body != nullptr) {
+      ExecuteProcessStmt(*always_block.body, net_values, &pending_nonblocking, diagnostics);
+    }
+  }
+
+  for (const auto& [net_id, value] : pending_nonblocking) {
+    if (net_id < 0 || static_cast<std::size_t>(net_id) >= net_values->size()) {
+      diagnostics->push_back(MakeEvalError("Nonblocking assignment target net id is invalid"));
+      continue;
+    }
+    (*net_values)[static_cast<std::size_t>(net_id)] = value;
+  }
+}
+
 }  // namespace
 
 CombinationalEvalResult CombinationalEvaluator::Evaluate(
@@ -180,20 +268,9 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
     return result;
   }
 
-  for (const int assign_index : evaluation_order) {
-    const auto& assign = graph.assigns[static_cast<std::size_t>(assign_index)];
-    if (assign.target_net_id < 0 || static_cast<std::size_t>(assign.target_net_id) >= result.net_values.size()) {
-      result.diagnostics.push_back(MakeEvalError("Assign target net id is invalid"));
-      continue;
-    }
-
-    const int value = EvaluateExpr(assign.rhs_expr, result.net_values, &result.diagnostics);
-    if (value == kUnknown) {
-      continue;
-    }
-
-    result.net_values[static_cast<std::size_t>(assign.target_net_id)] = value;
-  }
+  EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
+  ExecuteAlwaysBlocks(graph, &result.net_values, &result.diagnostics);
+  EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
 
   return result;
 }
