@@ -269,3 +269,40 @@ endmodule
   EXPECT_EQ(always_block.sensitivity_kind, mnf::ResolvedAlwaysIR::SensitivityKind::CombinationalStar);
   ExpectNetIds(always_block.sensitivity_net_ids, {0, 1, 3});
 }
+
+
+TEST(ElaboratorTest, ResolvesExplicitAlwaysSensitivityIntoNetIds) {
+  const std::string input = R"(module top(in1, in2, out1);
+  input in1;
+  input in2;
+  output out1;
+  reg state;
+  always @(in1, in2) begin
+    if (in1) state <= in2;
+    out1 = state;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "elaborator_always_list_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_TRUE(diagnostics.empty());
+
+  mnf::Elaborator elaborator;
+  auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "top");
+  ASSERT_TRUE(design_result.Ok());
+
+  ASSERT_EQ(design_result.value->top_graph.always_blocks.size(), 1u);
+  const auto& always_block = design_result.value->top_graph.always_blocks[0];
+  EXPECT_EQ(always_block.sensitivity_kind, mnf::ResolvedAlwaysIR::SensitivityKind::ExplicitList);
+  ExpectNetIds(always_block.sensitivity_net_ids, {0, 1});
+  ASSERT_EQ(always_block.sensitivity_name_views.size(), 2u);
+  EXPECT_EQ(always_block.sensitivity_name_views[0], "in1");
+  EXPECT_EQ(always_block.sensitivity_name_views[1], "in2");
+}

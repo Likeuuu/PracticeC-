@@ -276,12 +276,26 @@ Result<AlwaysBlock> Parser::ParseAlwaysBlock() {
   }
 
   if (Match(TokenKind::At)) {
-    if (!Expect(TokenKind::LParen, "Expected '(' after '@' in always sensitivity list") ||
-        !Expect(TokenKind::Star, "Expected '*' in always @(*) sensitivity list") ||
-        !Expect(TokenKind::RParen, "Expected ')' after always @(*) sensitivity list")) {
+    if (!Expect(TokenKind::LParen, "Expected '(' after '@' in always sensitivity list")) {
       return Result<AlwaysBlock>{std::nullopt, {}};
     }
-    block.sensitivity_kind = AlwaysBlock::SensitivityKind::CombinationalStar;
+
+    if (Match(TokenKind::Star)) {
+      if (!Expect(TokenKind::RParen, "Expected ')' after always @(*) sensitivity list")) {
+        return Result<AlwaysBlock>{std::nullopt, {}};
+      }
+      block.sensitivity_kind = AlwaysBlock::SensitivityKind::CombinationalStar;
+    } else {
+      auto signals = ParseIdentifierList();
+      if (!signals.Ok()) {
+        return Result<AlwaysBlock>{std::nullopt, {}};
+      }
+      if (!Expect(TokenKind::RParen, "Expected ')' after always sensitivity list")) {
+        return Result<AlwaysBlock>{std::nullopt, {}};
+      }
+      block.sensitivity_kind = AlwaysBlock::SensitivityKind::ExplicitList;
+      block.sensitivity_signals = std::move(*signals.value);
+    }
   }
 
   auto body = ParseProceduralStmt();

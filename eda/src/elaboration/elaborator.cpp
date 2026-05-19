@@ -94,6 +94,8 @@ ResolvedAlwaysIR::SensitivityKind ToResolvedAlwaysSensitivityKind(
   switch (kind) {
     case AlwaysBlock::SensitivityKind::CombinationalStar:
       return ResolvedAlwaysIR::SensitivityKind::CombinationalStar;
+    case AlwaysBlock::SensitivityKind::ExplicitList:
+      return ResolvedAlwaysIR::SensitivityKind::ExplicitList;
     case AlwaysBlock::SensitivityKind::Implicit:
     default:
       return ResolvedAlwaysIR::SensitivityKind::Implicit;
@@ -311,30 +313,6 @@ void AddLocalDeclsToScope(const ModuleDecl& module,
 std::unique_ptr<ResolvedProcessStmtIR> ResolveProceduralStmt(const ProceduralStmt& stmt,
                                                              const ScopeFrame& scope);
 
-void CollectProcessSensitivityNetIds(const ProceduralStmt& stmt, std::vector<int>* net_ids) {
-  if (stmt.kind == ProceduralStmt::Kind::Assignment) {
-    if (stmt.assign_stmt != nullptr) {
-      ResolvedExprIR dummy; // unused placeholder to keep function grouping simple
-      (void)dummy;
-      return;
-    }
-    return;
-  }
-
-  if (stmt.kind == ProceduralStmt::Kind::If) {
-    if (stmt.if_stmt != nullptr && stmt.if_stmt->then_stmt != nullptr) {
-      CollectProcessSensitivityNetIds(*stmt.if_stmt->then_stmt, net_ids);
-    }
-    return;
-  }
-
-  for (const auto& nested_stmt : stmt.statements) {
-    if (nested_stmt != nullptr) {
-      CollectProcessSensitivityNetIds(*nested_stmt, net_ids);
-    }
-  }
-}
-
 void CollectResolvedProcessSensitivityNetIds(const ResolvedProcessStmtIR& stmt, std::vector<int>* net_ids) {
   if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
     if (stmt.assign_stmt != nullptr) {
@@ -458,6 +436,16 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
           resolved_always.body != nullptr) {
         std::vector<int> raw_sensitivity_net_ids;
         CollectResolvedProcessSensitivityNetIds(*resolved_always.body, &raw_sensitivity_net_ids);
+        resolved_always.sensitivity_net_ids = BuildUniqueNetIds(raw_sensitivity_net_ids);
+      } else if (resolved_always.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::ExplicitList) {
+        std::vector<int> raw_sensitivity_net_ids;
+        for (const auto& signal_name : always_block.sensitivity_signals) {
+          ScopeSymbol symbol;
+          if (scope->LookupSymbol(signal_name, &symbol)) {
+            raw_sensitivity_net_ids.push_back(symbol.net_id);
+            resolved_always.sensitivity_name_views.push_back(symbol.qualified_name);
+          }
+        }
         resolved_always.sensitivity_net_ids = BuildUniqueNetIds(raw_sensitivity_net_ids);
       }
     }

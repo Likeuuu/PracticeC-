@@ -195,3 +195,31 @@ endmodule
   EXPECT_EQ(top.always_blocks[0].sensitivity_kind,
             mnf::AlwaysBlock::SensitivityKind::CombinationalStar);
 }
+
+
+TEST(ParserTest, ParsesAlwaysExplicitSensitivityList) {
+  const std::string input = R"(module top(a, b, y);
+  input a;
+  input b;
+  output y;
+  reg state;
+  always @(a, b) begin
+    state = a;
+    y = b;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "parser_always_list_test.nl");
+  mnf::Parser parser(lexer);
+  auto result = parser.ParseProgram();
+
+  ASSERT_TRUE(result.Ok());
+  const mnf::ModuleDecl& top = *result.value->modules[0];
+  ASSERT_EQ(top.always_blocks.size(), 1u);
+  EXPECT_EQ(top.always_blocks[0].sensitivity_kind,
+            mnf::AlwaysBlock::SensitivityKind::ExplicitList);
+  ASSERT_EQ(top.always_blocks[0].sensitivity_signals.size(), 2u);
+  EXPECT_EQ(top.always_blocks[0].sensitivity_signals[0], "a");
+  EXPECT_EQ(top.always_blocks[0].sensitivity_signals[1], "b");
+}

@@ -114,3 +114,39 @@ endmodule
   EXPECT_TRUE(saw_missing_lhs);
   EXPECT_TRUE(saw_missing_rhs);
 }
+
+
+TEST(SemanticCheckerTest, ReportsExplicitAlwaysSensitivityErrors) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state;
+  always @(in1, in1, missing_sig) begin
+    state = in1;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "semantic_always_sensitivity_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_FALSE(diagnostics.empty());
+
+  bool saw_duplicate = false;
+  bool saw_missing = false;
+  for (const auto& diagnostic : diagnostics) {
+    if (diagnostic.message.find("Duplicate signal in always sensitivity list") != std::string::npos) {
+      saw_duplicate = true;
+    }
+    if (diagnostic.message.find("Always sensitivity signal is not declared") != std::string::npos) {
+      saw_missing = true;
+    }
+  }
+  EXPECT_TRUE(saw_duplicate);
+  EXPECT_TRUE(saw_missing);
+}

@@ -235,6 +235,21 @@ void SemanticChecker::CheckModule(const ModuleDecl& module,
   }
 
   for (const auto& always_block : module.always_blocks) {
+    if (always_block.sensitivity_kind == AlwaysBlock::SensitivityKind::ExplicitList) {
+      std::unordered_set<std::string> seen_sensitivity_names;
+      for (const auto& signal_name : always_block.sensitivity_signals) {
+        if (!Contains(declared_signals, signal_name)) {
+          diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                           "Always sensitivity signal is not declared: " + signal_name,
+                                           always_block.location});
+        }
+        if (!seen_sensitivity_names.insert(signal_name).second) {
+          diagnostics.push_back(Diagnostic{DiagnosticLevel::Error,
+                                           "Duplicate signal in always sensitivity list: " + signal_name,
+                                           always_block.location});
+        }
+      }
+    }
     if (always_block.body != nullptr) {
       ValidateProceduralStmt(*always_block.body, declared_signals, diagnostics);
     }

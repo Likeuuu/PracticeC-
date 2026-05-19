@@ -186,12 +186,14 @@ struct ResolvedIfIR {
 struct ResolvedAlwaysIR {
   enum class SensitivityKind {
     Implicit,
-    CombinationalStar
+    CombinationalStar,
+    ExplicitList
   };
 
   std::string instance_path;
   SensitivityKind sensitivity_kind = SensitivityKind::Implicit;
   std::vector<int> sensitivity_net_ids;
+  std::vector<std::string> sensitivity_name_views;
   std::unique_ptr<ResolvedProcessStmtIR> body;
 
   ResolvedAlwaysIR() = default;
@@ -199,7 +201,8 @@ struct ResolvedAlwaysIR {
   ResolvedAlwaysIR(const ResolvedAlwaysIR& other)
       : instance_path(other.instance_path),
         sensitivity_kind(other.sensitivity_kind),
-        sensitivity_net_ids(other.sensitivity_net_ids) {
+        sensitivity_net_ids(other.sensitivity_net_ids),
+        sensitivity_name_views(other.sensitivity_name_views) {
     if (other.body != nullptr) {
       body = std::make_unique<ResolvedProcessStmtIR>(*other.body);
     }
@@ -213,6 +216,7 @@ struct ResolvedAlwaysIR {
     instance_path = other.instance_path;
     sensitivity_kind = other.sensitivity_kind;
     sensitivity_net_ids = other.sensitivity_net_ids;
+    sensitivity_name_views = other.sensitivity_name_views;
     body = other.body != nullptr ? std::make_unique<ResolvedProcessStmtIR>(*other.body) : nullptr;
     return *this;
   }

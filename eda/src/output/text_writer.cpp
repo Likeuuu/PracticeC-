@@ -42,6 +42,8 @@ const char* AlwaysSensitivityKindToString(ResolvedAlwaysIR::SensitivityKind kind
   switch (kind) {
     case ResolvedAlwaysIR::SensitivityKind::CombinationalStar:
       return "@(*)";
+    case ResolvedAlwaysIR::SensitivityKind::ExplicitList:
+      return "@(list)";
     case ResolvedAlwaysIR::SensitivityKind::Implicit:
     default:
       return "<implicit>";
