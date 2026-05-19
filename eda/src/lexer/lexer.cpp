@@ -56,6 +56,10 @@ const char* ToString(TokenKind kind) {
       return "Semicolon";
     case TokenKind::Dot:
       return "Dot";
+    case TokenKind::At:
+      return "At";
+    case TokenKind::Star:
+      return "Star";
     case TokenKind::Equal:
       return "Equal";
     case TokenKind::LessEqual:
@@ -121,6 +125,10 @@ Token Lexer::LexToken() {
       return MakeToken(TokenKind::Semicolon, ";", file_name_, start_line, start_column);
     case '.':
       return MakeToken(TokenKind::Dot, ".", file_name_, start_line, start_column);
+    case '@':
+      return MakeToken(TokenKind::At, "@", file_name_, start_line, start_column);
+    case '*':
+      return MakeToken(TokenKind::Star, "*", file_name_, start_line, start_column);
     case '=':
       return MakeToken(TokenKind::Equal, "=", file_name_, start_line, start_column);
     case '<':

@@ -82,6 +82,12 @@ struct ProceduralIfStmt : AstNode {
 };
 
 struct AlwaysBlock : AstNode {
+  enum class SensitivityKind {
+    Implicit,
+    CombinationalStar
+  };
+
+  SensitivityKind sensitivity_kind = SensitivityKind::Implicit;
   std::unique_ptr<ProceduralStmt> body;
 };
 

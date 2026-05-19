@@ -170,3 +170,28 @@ endmodule
   EXPECT_EQ(assign_stmt->assign_stmt->assignment_kind,
             mnf::ProceduralAssignStmt::AssignmentKind::Blocking);
 }
+
+
+TEST(ParserTest, ParsesAlwaysStarSensitivity) {
+  const std::string input = R"(module top(a, b, y);
+  input a;
+  input b;
+  output y;
+  reg state;
+  always @(*) begin
+    if (a & b) state <= y;
+    y = state;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "parser_always_star_test.nl");
+  mnf::Parser parser(lexer);
+  auto result = parser.ParseProgram();
+
+  ASSERT_TRUE(result.Ok());
+  const mnf::ModuleDecl& top = *result.value->modules[0];
+  ASSERT_EQ(top.always_blocks.size(), 1u);
+  EXPECT_EQ(top.always_blocks[0].sensitivity_kind,
+            mnf::AlwaysBlock::SensitivityKind::CombinationalStar);
+}

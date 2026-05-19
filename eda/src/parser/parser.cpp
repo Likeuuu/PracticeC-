@@ -275,6 +275,15 @@ Result<AlwaysBlock> Parser::ParseAlwaysBlock() {
     return Result<AlwaysBlock>{std::nullopt, {}};
   }
 
+  if (Match(TokenKind::At)) {
+    if (!Expect(TokenKind::LParen, "Expected '(' after '@' in always sensitivity list") ||
+        !Expect(TokenKind::Star, "Expected '*' in always @(*) sensitivity list") ||
+        !Expect(TokenKind::RParen, "Expected ')' after always @(*) sensitivity list")) {
+      return Result<AlwaysBlock>{std::nullopt, {}};
+    }
+    block.sensitivity_kind = AlwaysBlock::SensitivityKind::CombinationalStar;
+  }
+
   auto body = ParseProceduralStmt();
   if (!body.Ok()) {
     return Result<AlwaysBlock>{std::nullopt, {}};

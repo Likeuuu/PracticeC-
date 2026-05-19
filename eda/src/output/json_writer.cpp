@@ -90,6 +90,16 @@ const char* NetKindToString(ResolvedNetIR::Kind kind) {
   }
 }
 
+const char* AlwaysSensitivityKindToString(ResolvedAlwaysIR::SensitivityKind kind) {
+  switch (kind) {
+    case ResolvedAlwaysIR::SensitivityKind::CombinationalStar:
+      return "combinational_star";
+    case ResolvedAlwaysIR::SensitivityKind::Implicit:
+    default:
+      return "implicit";
+  }
+}
+
 const char* ProceduralAssignKindToString(ResolvedProceduralAssignIR::AssignmentKind kind) {
   switch (kind) {
     case ResolvedProceduralAssignIR::AssignmentKind::NonBlocking:

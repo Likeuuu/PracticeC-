@@ -89,6 +89,17 @@ ResolvedProceduralAssignIR::AssignmentKind ToResolvedAssignKind(
   }
 }
 
+ResolvedAlwaysIR::SensitivityKind ToResolvedAlwaysSensitivityKind(
+    AlwaysBlock::SensitivityKind kind) {
+  switch (kind) {
+    case AlwaysBlock::SensitivityKind::CombinationalStar:
+      return ResolvedAlwaysIR::SensitivityKind::CombinationalStar;
+    case AlwaysBlock::SensitivityKind::Implicit:
+    default:
+      return ResolvedAlwaysIR::SensitivityKind::Implicit;
+  }
+}
+
 const ModuleDecl* FindTopModule(const Program& program, const std::string& top_name) {
   for (const auto& module : program.modules) {
     if (module->name == top_name) {
@@ -300,6 +311,71 @@ void AddLocalDeclsToScope(const ModuleDecl& module,
 std::unique_ptr<ResolvedProcessStmtIR> ResolveProceduralStmt(const ProceduralStmt& stmt,
                                                              const ScopeFrame& scope);
 
+void CollectProcessSensitivityNetIds(const ProceduralStmt& stmt, std::vector<int>* net_ids) {
+  if (stmt.kind == ProceduralStmt::Kind::Assignment) {
+    if (stmt.assign_stmt != nullptr) {
+      ResolvedExprIR dummy; // unused placeholder to keep function grouping simple
+      (void)dummy;
+      return;
+    }
+    return;
+  }
+
+  if (stmt.kind == ProceduralStmt::Kind::If) {
+    if (stmt.if_stmt != nullptr && stmt.if_stmt->then_stmt != nullptr) {
+      CollectProcessSensitivityNetIds(*stmt.if_stmt->then_stmt, net_ids);
+    }
+    return;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      CollectProcessSensitivityNetIds(*nested_stmt, net_ids);
+    }
+  }
+}
+
+void CollectResolvedProcessSensitivityNetIds(const ResolvedProcessStmtIR& stmt, std::vector<int>* net_ids) {
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    if (stmt.assign_stmt != nullptr) {
+      for (const int net_id : stmt.assign_stmt->source_net_ids) {
+        net_ids->push_back(net_id);
+      }
+    }
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    if (stmt.if_stmt != nullptr) {
+      for (const int net_id : stmt.if_stmt->condition_source_net_ids) {
+        net_ids->push_back(net_id);
+      }
+      if (stmt.if_stmt->then_stmt != nullptr) {
+        CollectResolvedProcessSensitivityNetIds(*stmt.if_stmt->then_stmt, net_ids);
+      }
+    }
+    return;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      CollectResolvedProcessSensitivityNetIds(*nested_stmt, net_ids);
+    }
+  }
+}
+
+std::vector<int> BuildUniqueNetIds(const std::vector<int>& net_ids) {
+  std::unordered_set<int> seen;
+  std::vector<int> unique_ids;
+  unique_ids.reserve(net_ids.size());
+  for (const int net_id : net_ids) {
+    if (net_id >= 0 && seen.insert(net_id).second) {
+      unique_ids.push_back(net_id);
+    }
+  }
+  return unique_ids;
+}
+
 ResolvedProceduralAssignIR ResolveProceduralAssign(const ProceduralAssignStmt& stmt,
                                                    const ScopeFrame& scope) {
   ResolvedProceduralAssignIR resolved_stmt;
@@ -375,8 +451,15 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
   for (const auto& always_block : scope->module->always_blocks) {
     ResolvedAlwaysIR resolved_always;
     resolved_always.instance_path = scope->instance_path;
+    resolved_always.sensitivity_kind = ToResolvedAlwaysSensitivityKind(always_block.sensitivity_kind);
     if (always_block.body != nullptr) {
       resolved_always.body = ResolveProceduralStmt(*always_block.body, *scope);
+      if (resolved_always.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::CombinationalStar &&
+          resolved_always.body != nullptr) {
+        std::vector<int> raw_sensitivity_net_ids;
+        CollectResolvedProcessSensitivityNetIds(*resolved_always.body, &raw_sensitivity_net_ids);
+        resolved_always.sensitivity_net_ids = BuildUniqueNetIds(raw_sensitivity_net_ids);
+      }
     }
     graph->always_blocks.push_back(std::move(resolved_always));
   }

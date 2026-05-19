@@ -221,3 +221,25 @@ endmodule
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), -1);
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out2"), 1);
 }
+
+
+TEST(CombinationalEvaluatorTest, AlwaysStarRunsWhenSensitiveInputsChange) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state;
+  assign out1 = state;
+  always @(*) begin
+    state = in1;
+  end
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+  const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}});
+
+  ASSERT_TRUE(result.Ok());
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "state"), 1);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
+}
