@@ -222,13 +222,13 @@ void ExecuteProcessStmt(const ResolvedProcessStmtIR& stmt,
 bool DidAnySensitiveNetChange(const ResolvedAlwaysIR& always_block,
                               const std::vector<int>& before_values,
                               const std::vector<int>& after_values,
-                              const std::unordered_set<int>& driven_input_net_ids) {
+                              const std::unordered_set<int>& externally_driven_net_ids) {
   if (always_block.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::Implicit) {
     return true;
   }
 
   for (const int net_id : always_block.sensitivity_net_ids) {
-    if (driven_input_net_ids.find(net_id) != driven_input_net_ids.end()) {
+    if (externally_driven_net_ids.find(net_id) != externally_driven_net_ids.end()) {
       return true;
     }
     if (net_id < 0 || static_cast<std::size_t>(net_id) >= before_values.size() ||
@@ -244,7 +244,7 @@ bool DidAnySensitiveNetChange(const ResolvedAlwaysIR& always_block,
 
 void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
                          const std::vector<int>& before_always_values,
-                         const std::unordered_set<int>& driven_input_net_ids,
+                         const std::unordered_set<int>& externally_driven_net_ids,
                          std::vector<int>* net_values,
                          std::vector<Diagnostic>* diagnostics) {
   std::unordered_map<int, int> pending_nonblocking;
@@ -253,7 +253,7 @@ void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
     if (always_block.body == nullptr) {
       continue;
     }
-    if (!DidAnySensitiveNetChange(always_block, before_always_values, *net_values, driven_input_net_ids)) {
+    if (!DidAnySensitiveNetChange(always_block, before_always_values, *net_values, externally_driven_net_ids)) {
       continue;
     }
     ExecuteProcessStmt(*always_block.body, net_values, &pending_nonblocking, diagnostics);
@@ -268,6 +268,11 @@ void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
   }
 }
 
+int ComputeMaxDeltaCycles(const ResolvedNetGraphIR& graph) {
+  const std::size_t base = graph.nets.size() + graph.assigns.size() + graph.always_blocks.size();
+  return static_cast<int>(std::max<std::size_t>(8, base * 4));
+}
+
 }  // namespace
 
 CombinationalEvalResult CombinationalEvaluator::Evaluate(
@@ -276,7 +281,7 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
   CombinationalEvalResult result;
   result.net_values.assign(graph.nets.size(), kUnknown);
 
-  std::unordered_set<int> driven_input_net_ids;
+  std::unordered_set<int> externally_driven_net_ids;
 
   for (const auto& [name, value] : input_values) {
     if (!IsBitValue(value)) {
@@ -292,7 +297,7 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
       continue;
     }
     result.net_values[static_cast<std::size_t>(it->id)] = value;
-    driven_input_net_ids.insert(it->id);
+    externally_driven_net_ids.insert(it->id);
   }
 
   const std::vector<int> evaluation_order = BuildEvaluationOrder(graph, &result.diagnostics);
@@ -300,11 +305,33 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
     return result;
   }
 
-  const std::vector<int> before_assign_values = result.net_values;
-  EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
-  ExecuteAlwaysBlocks(graph, before_assign_values, driven_input_net_ids, &result.net_values, &result.diagnostics);
-  EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
+  std::vector<int> previous_delta_values = result.net_values;
+  const int max_delta_cycles = ComputeMaxDeltaCycles(graph);
 
+  for (int delta = 1; delta <= max_delta_cycles; ++delta) {
+    const std::vector<int> before_assign_values = result.net_values;
+    EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
+    ExecuteAlwaysBlocks(graph,
+                        before_assign_values,
+                        externally_driven_net_ids,
+                        &result.net_values,
+                        &result.diagnostics);
+    EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);
+    result.delta_cycles = delta;
+
+    if (!result.Ok()) {
+      return result;
+    }
+
+    if (result.net_values == previous_delta_values) {
+      return result;
+    }
+
+    previous_delta_values = result.net_values;
+    externally_driven_net_ids.clear();
+  }
+
+  result.diagnostics.push_back(MakeEvalError("Delta cycle limit reached before evaluation converged"));
   return result;
 }
 

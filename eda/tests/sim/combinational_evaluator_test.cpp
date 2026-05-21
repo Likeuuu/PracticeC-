@@ -217,8 +217,9 @@ endmodule
   const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}});
 
   ASSERT_TRUE(result.Ok());
+  EXPECT_GE(result.delta_cycles, 2);
   EXPECT_EQ(NetValueByName(result, design.top_graph, "state"), 1);
-  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), -1);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out2"), 1);
 }
 
@@ -264,5 +265,34 @@ endmodule
 
   ASSERT_TRUE(result.Ok());
   EXPECT_EQ(NetValueByName(result, design.top_graph, "state"), 1);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
+}
+
+
+TEST(CombinationalEvaluatorTest, UsesMultipleDeltaCyclesForChainedAlwaysBlocks) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state;
+  wire mid;
+  assign mid = state;
+  assign out1 = state;
+  always @(in1) begin
+    state <= in1;
+  end
+  always @(mid) begin
+    out1 = mid;
+  end
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+  const auto result = evaluator.Evaluate(design.top_graph, {{"in1", 1}});
+
+  ASSERT_TRUE(result.Ok());
+  EXPECT_GE(result.delta_cycles, 2);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "state"), 1);
+  EXPECT_EQ(NetValueByName(result, design.top_graph, "mid"), 1);
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
 }

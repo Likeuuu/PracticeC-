@@ -12,6 +12,7 @@ namespace mnf {
 struct CombinationalEvalResult {
   std::vector<int> net_values; // id : signal value
   std::vector<Diagnostic> diagnostics;
+  int delta_cycles = 0;
 
   bool Ok() const {
     return diagnostics.empty();
