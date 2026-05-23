@@ -41,6 +41,27 @@ add_executable(mnf_cli
 
 target_link_libraries(mnf_cli PRIVATE mnf)
 
+
+find_path(LIBCLANG_INCLUDE_DIR
+    NAMES clang-c/Index.h
+    PATHS /usr/lib/llvm-18/include /usr/include
+)
+
+find_library(LIBCLANG_LIBRARY
+    NAMES clang libclang
+    PATHS /usr/lib/llvm-18/lib /usr/lib /lib/x86_64-linux-gnu
+)
+
+if(LIBCLANG_INCLUDE_DIR AND LIBCLANG_LIBRARY)
+    add_executable(clang_ast_demo
+        tools/clang_ast_demo/main.cpp
+    )
+
+    target_include_directories(clang_ast_demo PRIVATE ${LIBCLANG_INCLUDE_DIR})
+    target_link_libraries(clang_ast_demo PRIVATE ${LIBCLANG_LIBRARY})
+    target_compile_features(clang_ast_demo PRIVATE cxx_std_17)
+endif()
+
 if(MNF_BUILD_TESTS)
     include(FetchContent)
 
