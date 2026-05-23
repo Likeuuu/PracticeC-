@@ -222,9 +222,24 @@ void ExecuteProcessStmt(const ResolvedProcessStmtIR& stmt,
 bool DidAnySensitiveNetChange(const ResolvedAlwaysIR& always_block,
                               const std::vector<int>& before_values,
                               const std::vector<int>& after_values,
-                              const std::unordered_set<int>& externally_driven_net_ids) {
+                              const std::unordered_set<int>& externally_driven_net_ids,
+                              const std::vector<int>& previous_step_net_values) {
   if (always_block.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::Implicit) {
     return true;
+  }
+
+  if (always_block.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::Posedge) {
+    for (const int net_id : always_block.sensitivity_net_ids) {
+      if (net_id < 0 || static_cast<std::size_t>(net_id) >= previous_step_net_values.size() ||
+          static_cast<std::size_t>(net_id) >= after_values.size()) {
+        continue;
+      }
+      if (previous_step_net_values[static_cast<std::size_t>(net_id)] == 0 &&
+          after_values[static_cast<std::size_t>(net_id)] == 1) {
+        return true;
+      }
+    }
+    return false;
   }
 
   for (const int net_id : always_block.sensitivity_net_ids) {
@@ -245,6 +260,7 @@ bool DidAnySensitiveNetChange(const ResolvedAlwaysIR& always_block,
 void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
                          const std::vector<int>& before_always_values,
                          const std::unordered_set<int>& externally_driven_net_ids,
+                         const std::vector<int>& previous_step_net_values,
                          std::vector<int>* net_values,
                          std::vector<Diagnostic>* diagnostics) {
   std::unordered_map<int, int> pending_nonblocking;
@@ -253,7 +269,11 @@ void ExecuteAlwaysBlocks(const ResolvedNetGraphIR& graph,
     if (always_block.body == nullptr) {
       continue;
     }
-    if (!DidAnySensitiveNetChange(always_block, before_always_values, *net_values, externally_driven_net_ids)) {
+    if (!DidAnySensitiveNetChange(always_block,
+                                  before_always_values,
+                                  *net_values,
+                                  externally_driven_net_ids,
+                                  previous_step_net_values)) {
       continue;
     }
     ExecuteProcessStmt(*always_block.body, net_values, &pending_nonblocking, diagnostics);
@@ -278,10 +298,35 @@ int ComputeMaxDeltaCycles(const ResolvedNetGraphIR& graph) {
 CombinationalEvalResult CombinationalEvaluator::Evaluate(
     const ResolvedNetGraphIR& graph,
     const std::unordered_map<std::string, int>& input_values) const {
+  std::unordered_map<std::string, int> previous_input_values;
+  return EvaluateTransition(graph, previous_input_values, input_values);
+}
+
+CombinationalEvalResult CombinationalEvaluator::EvaluateTransition(
+    const ResolvedNetGraphIR& graph,
+    const std::unordered_map<std::string, int>& previous_input_values,
+    const std::unordered_map<std::string, int>& input_values) const {
   CombinationalEvalResult result;
   result.net_values.assign(graph.nets.size(), kUnknown);
+  std::vector<int> previous_step_net_values(graph.nets.size(), kUnknown);
 
   std::unordered_set<int> externally_driven_net_ids;
+
+  for (const auto& [name, value] : previous_input_values) {
+    if (!IsBitValue(value)) {
+      result.diagnostics.push_back(MakeEvalError("Previous input value must be 0 or 1: " + name));
+      continue;
+    }
+
+    auto it = std::find_if(graph.nets.begin(), graph.nets.end(), [&](const ResolvedNetIR& net) {
+      return net.qualified_name == name;
+    });
+    if (it == graph.nets.end()) {
+      result.diagnostics.push_back(MakeEvalError("Previous input net not found: " + name));
+      continue;
+    }
+    previous_step_net_values[static_cast<std::size_t>(it->id)] = value;
+  }
 
   for (const auto& [name, value] : input_values) {
     if (!IsBitValue(value)) {
@@ -314,6 +359,7 @@ CombinationalEvalResult CombinationalEvaluator::Evaluate(
     ExecuteAlwaysBlocks(graph,
                         before_assign_values,
                         externally_driven_net_ids,
+                        previous_step_net_values,
                         &result.net_values,
                         &result.diagnostics);
     EvaluateAssigns(graph, evaluation_order, &result.net_values, &result.diagnostics);

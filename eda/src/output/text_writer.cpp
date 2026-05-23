@@ -44,6 +44,8 @@ const char* AlwaysSensitivityKindToString(ResolvedAlwaysIR::SensitivityKind kind
       return "@(*)";
     case ResolvedAlwaysIR::SensitivityKind::ExplicitList:
       return "@(list)";
+    case ResolvedAlwaysIR::SensitivityKind::Posedge:
+      return "@(posedge)";
     case ResolvedAlwaysIR::SensitivityKind::Implicit:
     default:
       return "<implicit>";

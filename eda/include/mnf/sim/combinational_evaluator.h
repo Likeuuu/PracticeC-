@@ -23,6 +23,11 @@ class CombinationalEvaluator {
 public:
   CombinationalEvalResult Evaluate(const ResolvedNetGraphIR& graph,
                                    const std::unordered_map<std::string, int>& input_values) const;
+
+  CombinationalEvalResult EvaluateTransition(
+      const ResolvedNetGraphIR& graph,
+      const std::unordered_map<std::string, int>& previous_input_values,
+      const std::unordered_map<std::string, int>& input_values) const;
 };
 
 }  // namespace mnf

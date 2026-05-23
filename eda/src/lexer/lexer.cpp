@@ -42,6 +42,8 @@ const char* ToString(TokenKind kind) {
       return "End";
     case TokenKind::If:
       return "If";
+    case TokenKind::Posedge:
+      return "Posedge";
     case TokenKind::Identifier:
       return "Identifier";
     case TokenKind::Number:
@@ -171,6 +173,7 @@ Token Lexer::LexToken() {
         {"begin", TokenKind::Begin},
         {"end", TokenKind::End},
         {"if", TokenKind::If},
+        {"posedge", TokenKind::Posedge},
     };
 
     const auto it = keywords.find(lexeme);

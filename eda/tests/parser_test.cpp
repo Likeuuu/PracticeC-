@@ -223,3 +223,27 @@ endmodule
   EXPECT_EQ(top.always_blocks[0].sensitivity_signals[0], "a");
   EXPECT_EQ(top.always_blocks[0].sensitivity_signals[1], "b");
 }
+
+
+TEST(ParserTest, ParsesAlwaysPosedgeSensitivity) {
+  const std::string input = R"(module top(clk, q);
+  input clk;
+  output q;
+  reg state;
+  always @(posedge clk) begin
+    state <= q;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "parser_posedge_test.nl");
+  mnf::Parser parser(lexer);
+  auto result = parser.ParseProgram();
+
+  ASSERT_TRUE(result.Ok());
+  const mnf::ModuleDecl& top = *result.value->modules[0];
+  ASSERT_EQ(top.always_blocks.size(), 1u);
+  EXPECT_EQ(top.always_blocks[0].sensitivity_kind, mnf::AlwaysBlock::SensitivityKind::Posedge);
+  ASSERT_EQ(top.always_blocks[0].sensitivity_signals.size(), 1u);
+  EXPECT_EQ(top.always_blocks[0].sensitivity_signals[0], "clk");
+}

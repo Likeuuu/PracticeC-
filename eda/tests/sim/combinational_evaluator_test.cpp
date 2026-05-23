@@ -296,3 +296,34 @@ endmodule
   EXPECT_EQ(NetValueByName(result, design.top_graph, "mid"), 1);
   EXPECT_EQ(NetValueByName(result, design.top_graph, "out1"), 1);
 }
+
+
+TEST(CombinationalEvaluatorTest, PosedgeAlwaysTriggersOnInputTransition) {
+  const std::string input = R"(module top(clk, d, q);
+  input clk;
+  input d;
+  output q;
+  reg state;
+  assign q = state;
+  always @(posedge clk) begin
+    state <= d;
+  end
+endmodule
+)";
+
+  const mnf::ElaboratedDesign design = BuildDesign(input);
+  mnf::CombinationalEvaluator evaluator;
+
+  const auto result_no_edge = evaluator.EvaluateTransition(design.top_graph,
+                                                           {{"clk", 0}, {"d", 1}},
+                                                           {{"clk", 0}, {"d", 1}});
+  ASSERT_TRUE(result_no_edge.Ok());
+  EXPECT_EQ(NetValueByName(result_no_edge, design.top_graph, "q"), -1);
+
+  const auto result_edge = evaluator.EvaluateTransition(design.top_graph,
+                                                        {{"clk", 0}, {"d", 1}},
+                                                        {{"clk", 1}, {"d", 1}});
+  ASSERT_TRUE(result_edge.Ok());
+  EXPECT_EQ(NetValueByName(result_edge, design.top_graph, "state"), 1);
+  EXPECT_EQ(NetValueByName(result_edge, design.top_graph, "q"), 1);
+}

@@ -187,7 +187,8 @@ struct ResolvedAlwaysIR {
   enum class SensitivityKind {
     Implicit,
     CombinationalStar,
-    ExplicitList
+    ExplicitList,
+    Posedge
   };
 
   std::string instance_path;

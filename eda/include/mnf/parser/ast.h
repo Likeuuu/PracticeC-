@@ -85,7 +85,8 @@ struct AlwaysBlock : AstNode {
   enum class SensitivityKind {
     Implicit,
     CombinationalStar,
-    ExplicitList
+    ExplicitList,
+    Posedge
   };
 
   SensitivityKind sensitivity_kind = SensitivityKind::Implicit;

@@ -96,6 +96,8 @@ ResolvedAlwaysIR::SensitivityKind ToResolvedAlwaysSensitivityKind(
       return ResolvedAlwaysIR::SensitivityKind::CombinationalStar;
     case AlwaysBlock::SensitivityKind::ExplicitList:
       return ResolvedAlwaysIR::SensitivityKind::ExplicitList;
+    case AlwaysBlock::SensitivityKind::Posedge:
+      return ResolvedAlwaysIR::SensitivityKind::Posedge;
     case AlwaysBlock::SensitivityKind::Implicit:
     default:
       return ResolvedAlwaysIR::SensitivityKind::Implicit;
@@ -437,7 +439,8 @@ void BuildResolvedGraphRecursive(const SymbolTable& symbols,
         std::vector<int> raw_sensitivity_net_ids;
         CollectResolvedProcessSensitivityNetIds(*resolved_always.body, &raw_sensitivity_net_ids);
         resolved_always.sensitivity_net_ids = BuildUniqueNetIds(raw_sensitivity_net_ids);
-      } else if (resolved_always.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::ExplicitList) {
+      } else if (resolved_always.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::ExplicitList ||
+                 resolved_always.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::Posedge) {
         std::vector<int> raw_sensitivity_net_ids;
         for (const auto& signal_name : always_block.sensitivity_signals) {
           ScopeSymbol symbol;

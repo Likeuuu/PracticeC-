@@ -306,3 +306,38 @@ endmodule
   EXPECT_EQ(always_block.sensitivity_name_views[0], "in1");
   EXPECT_EQ(always_block.sensitivity_name_views[1], "in2");
 }
+
+
+TEST(ElaboratorTest, ResolvesPosedgeSensitivityIntoNetIds) {
+  const std::string input = R"(module top(clk, d, q);
+  input clk;
+  input d;
+  output q;
+  reg state;
+  always @(posedge clk) begin
+    state <= d;
+  end
+endmodule
+)";
+
+  mnf::Lexer lexer(input, "elaborator_posedge_test.nl");
+  mnf::Parser parser(lexer);
+  auto parse_result = parser.ParseProgram();
+  ASSERT_TRUE(parse_result.Ok());
+
+  mnf::SymbolTable symbols;
+  mnf::SemanticChecker checker;
+  const auto diagnostics = checker.Check(*parse_result.value, symbols);
+  ASSERT_TRUE(diagnostics.empty());
+
+  mnf::Elaborator elaborator;
+  auto design_result = elaborator.Elaborate(*parse_result.value, symbols, "top");
+  ASSERT_TRUE(design_result.Ok());
+
+  ASSERT_EQ(design_result.value->top_graph.always_blocks.size(), 1u);
+  const auto& always_block = design_result.value->top_graph.always_blocks[0];
+  EXPECT_EQ(always_block.sensitivity_kind, mnf::ResolvedAlwaysIR::SensitivityKind::Posedge);
+  ExpectNetIds(always_block.sensitivity_net_ids, {0});
+  ASSERT_EQ(always_block.sensitivity_name_views.size(), 1u);
+  EXPECT_EQ(always_block.sensitivity_name_views[0], "clk");
+}

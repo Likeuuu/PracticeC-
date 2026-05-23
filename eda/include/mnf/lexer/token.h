@@ -18,6 +18,7 @@ enum class TokenKind {
   Begin,
   End,
   If,
+  Posedge,
   Identifier,
   Number,
   LParen,

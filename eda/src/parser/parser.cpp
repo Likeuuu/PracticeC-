@@ -285,6 +285,14 @@ Result<AlwaysBlock> Parser::ParseAlwaysBlock() {
         return Result<AlwaysBlock>{std::nullopt, {}};
       }
       block.sensitivity_kind = AlwaysBlock::SensitivityKind::CombinationalStar;
+    } else if (Match(TokenKind::Posedge)) {
+      Token signal_token;
+      if (!ExpectIdentifier("Expected identifier after 'posedge'", &signal_token) ||
+          !Expect(TokenKind::RParen, "Expected ')' after always @(posedge signal) sensitivity list")) {
+        return Result<AlwaysBlock>{std::nullopt, {}};
+      }
+      block.sensitivity_kind = AlwaysBlock::SensitivityKind::Posedge;
+      block.sensitivity_signals.push_back(signal_token.lexeme);
     } else {
       auto signals = ParseIdentifierList();
       if (!signals.Ok()) {
