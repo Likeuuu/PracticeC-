@@ -19,6 +19,7 @@ add_library(mnf
     src/output/json_writer.cpp
     src/output/text_writer.cpp
     src/sim/combinational_evaluator.cpp
+    src/codegen/code_generator.cpp
     src/app/cli.cpp
 )
 
@@ -86,6 +87,7 @@ if(MNF_BUILD_TESTS)
         tests/elaborator_test.cpp
         tests/elaboration_cycle_test.cpp
         tests/sim/combinational_evaluator_test.cpp
+        tests/codegen/code_generator_test.cpp
     )
 
     target_link_libraries(mnf_tests PRIVATE mnf GTest::gtest_main)
