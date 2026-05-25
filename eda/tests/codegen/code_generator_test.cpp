@@ -72,6 +72,24 @@ std::unordered_map<int, int> RunCompiledSim(const mnf::ElaboratedDesign& design,
   return results;
 }
 
+void ExpectCompiledSimMatchesInterpreter(
+    const mnf::ElaboratedDesign& design,
+    const std::unordered_map<std::string, int>& input_values) {
+  mnf::CombinationalEvaluator evaluator;
+  const auto interp_result = evaluator.Evaluate(design.top_graph, input_values);
+  ASSERT_TRUE(interp_result.Ok());
+
+  const auto compiled_results = RunCompiledSim(design, input_values);
+
+  for (const auto& net : design.top_graph.nets) {
+    const int interp_val = interp_result.net_values[static_cast<std::size_t>(net.id)];
+    const auto it = compiled_results.find(net.id);
+    ASSERT_NE(it, compiled_results.end()) << "net_" << net.id << " (" << net.qualified_name
+                                          << ") not found in compiled output";
+    EXPECT_EQ(interp_val, it->second) << "mismatch on " << net.qualified_name;
+  }
+}
+
 }  // namespace
 
 TEST(CodeGeneratorTest, GeneratesCombinationalAssigns) {
@@ -157,4 +175,56 @@ endmodule
     ASSERT_NE(it, compiled_results.end()) << "net_" << net.id << " (" << net.qualified_name << ") not found in compiled output";
     EXPECT_EQ(interp_val, it->second) << "mismatch on " << net.qualified_name;
   }
+}
+
+TEST(CodeGeneratorTest, CompiledSimUsesDependencyOrderInsteadOfSourceOrder) {
+  const std::string input = R"(module top(in1, in2, in3, out1);
+  input in1;
+  input in2;
+  input in3;
+  output out1;
+  wire a1;
+  wire a2;
+  assign out1 = a2;
+  assign a2 = a1 | in3;
+  assign a1 = in1 & in2;
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 0}, {"in3", 1}});
+}
+
+TEST(CodeGeneratorTest, CompiledSimMatchesInterpreterForHierarchy) {
+  const std::string input = R"(module leaf(a, y);
+  input a;
+  output y;
+  wire leaf_wire;
+  assign leaf_wire = a;
+  assign y = leaf_wire;
+endmodule
+
+module mid(in1, out1);
+  input in1;
+  output out1;
+  wire mid_wire;
+  assign mid_wire = in1;
+  leaf u_leaf(.a(mid_wire), .y(out1));
+endmodule
+
+module top(in1, in2, out1);
+  input in1;
+  input in2;
+  output out1;
+  wire mid_out;
+  wire and_out;
+  assign and_out = in1 & in2;
+  mid u_mid(.in1(and_out), .out1(mid_out));
+  assign out1 = mid_out;
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 1}});
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 0}});
 }

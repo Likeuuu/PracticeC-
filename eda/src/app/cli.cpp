@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "mnf/codegen/code_generator.h"
 #include "mnf/common/diagnostic.h"
 #include "mnf/elaboration/elaborator.h"
 #include "mnf/lexer/lexer.h"
@@ -22,7 +23,8 @@ namespace {
 enum class OutputFormat {
   Text,
   Json,
-  Both
+  Both,
+  Cpp
 };
 
 std::string ReadFile(const std::string& path) {
@@ -44,12 +46,15 @@ OutputFormat ParseOutputFormat(const std::string& arg) {
   if (arg == "--format=json") {
     return OutputFormat::Json;
   }
+  if (arg == "--format=cpp") {
+    return OutputFormat::Cpp;
+  }
   return OutputFormat::Both;
 }
 
 void PrintUsage() {
   std::cout << "MiniNetlistFrontend bootstrap\n";
-  std::cout << "Usage: mnf_cli <input-file> [top-module] [--format=text|json|both]\n";
+  std::cout << "Usage: mnf_cli <input-file> [top-module] [--format=text|json|both|cpp]\n";
 }
 
 }  // namespace
@@ -100,6 +105,17 @@ int CliApp::Run(int argc, char** argv) const {
 
   TextWriter text_writer;
   JsonWriter json_writer;
+  CodeGenerator code_generator;
+
+  if (format == OutputFormat::Cpp) {
+    const auto codegen_result = code_generator.Generate(*design_result.value);
+    if (!codegen_result.Ok()) {
+      PrintDiagnostics(codegen_result.diagnostics);
+      return 1;
+    }
+    std::cout << codegen_result.source;
+    return 0;
+  }
 
   if (format == OutputFormat::Text || format == OutputFormat::Both) {
     std::cout << "===== TEXT SUMMARY =====\n";
