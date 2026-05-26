@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <queue>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -17,6 +18,44 @@ Diagnostic MakeCodeGenError(const std::string& message) {
 
 bool IsBitValue(int value) {
   return value == 0 || value == 1;
+}
+
+void CollectNonBlockingTargets(const ResolvedProcessStmtIR& stmt, std::set<int>* targets) {
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    if (stmt.assign_stmt != nullptr &&
+        stmt.assign_stmt->assignment_kind == ResolvedProceduralAssignIR::AssignmentKind::NonBlocking) {
+      targets->insert(stmt.assign_stmt->target_net_id);
+    }
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    if (stmt.if_stmt != nullptr && stmt.if_stmt->then_stmt != nullptr) {
+      CollectNonBlockingTargets(*stmt.if_stmt->then_stmt, targets);
+    }
+    return;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      CollectNonBlockingTargets(*nested_stmt, targets);
+    }
+  }
+}
+
+std::set<int> CollectNonBlockingTargets(const ResolvedNetGraphIR& graph) {
+  std::set<int> targets;
+  for (const auto& always_block : graph.always_blocks) {
+    if (always_block.body != nullptr) {
+      CollectNonBlockingTargets(*always_block.body, &targets);
+    }
+  }
+  return targets;
+}
+
+int ComputeMaxDeltaCycles(const ResolvedNetGraphIR& graph) {
+  const std::size_t base = graph.nets.size() + graph.assigns.size() + graph.always_blocks.size();
+  return static_cast<int>(std::max<std::size_t>(8, base * 4));
 }
 
 std::vector<int> BuildAssignEvaluationOrder(const ResolvedNetGraphIR& graph,
@@ -113,7 +152,8 @@ void CodeGenerator::EmitModuleStruct(const ResolvedNetGraphIR& graph,
   *code += "struct " + top_name + " {\n";
 
   for (const auto& net : graph.nets) {
-    *code += "  int net_" + std::to_string(net.id) + " = 0;  // " + net.qualified_name + "\n";
+    *code += "  int net_" + std::to_string(net.id) + " = -1;  // " + net.qualified_name + "\n";
+    *code += "  int prev_net_" + std::to_string(net.id) + " = -1;\n";
   }
 
   *code += "\n  void evaluate();\n";
@@ -125,22 +165,65 @@ void CodeGenerator::EmitEvaluateFunction(const ResolvedNetGraphIR& graph,
                                          std::string* code,
                                          std::vector<Diagnostic>* diagnostics) const {
   *code += "void " + top_name + "::evaluate() {\n";
+  const std::set<int> nonblocking_targets = CollectNonBlockingTargets(graph);
+  const int max_delta_cycles = ComputeMaxDeltaCycles(graph);
 
+  if (graph.always_blocks.empty()) {
+    EmitAssignStatements(graph, code, diagnostics);
+  } else {
+    *code += "  for (int delta = 0; delta < " + std::to_string(max_delta_cycles) + "; ++delta) {\n";
+    for (const auto& net : graph.nets) {
+      *code += "    const int delta_prev_net_" + std::to_string(net.id) + " = net_" + std::to_string(net.id) + ";\n";
+    }
+    for (const int target_net_id : nonblocking_targets) {
+      *code += "    int nb_net_" + std::to_string(target_net_id) + " = 0;\n";
+      *code += "    bool has_nb_net_" + std::to_string(target_net_id) + " = false;\n";
+    }
+
+    EmitAssignStatements(graph, code, diagnostics);
+    for (const auto& always_block : graph.always_blocks) {
+      EmitAlwaysBlock(always_block, code, diagnostics);
+    }
+    for (const int target_net_id : nonblocking_targets) {
+      *code += "    if (has_nb_net_" + std::to_string(target_net_id) + ") {\n";
+      *code += "      net_" + std::to_string(target_net_id) + " = nb_net_" + std::to_string(target_net_id) + ";\n";
+      *code += "    }\n";
+    }
+    EmitAssignStatements(graph, code, diagnostics);
+
+    *code += "    bool changed = false;\n";
+    for (const auto& net : graph.nets) {
+      *code += "    changed = changed || delta_prev_net_" + std::to_string(net.id)
+            + " != net_" + std::to_string(net.id) + ";\n";
+    }
+    *code += "    if (!changed) {\n";
+    *code += "      break;\n";
+    *code += "    }\n";
+    *code += "  }\n";
+  }
+
+  for (const auto& net : graph.nets) {
+    *code += "  prev_net_" + std::to_string(net.id) + " = net_" + std::to_string(net.id) + ";\n";
+  }
+
+  *code += "}\n\n";
+}
+
+void CodeGenerator::EmitAssignStatements(const ResolvedNetGraphIR& graph,
+                                         std::string* code,
+                                         std::vector<Diagnostic>* diagnostics) const {
   const std::vector<int> evaluation_order = BuildAssignEvaluationOrder(graph, diagnostics);
   if (!diagnostics->empty()) {
     *code += "  // code generation failed before assign emission\n";
-    *code += "}\n\n";
     return;
   }
 
   for (const int assign_index : evaluation_order) {
     const auto& assign = graph.assigns[static_cast<std::size_t>(assign_index)];
-    *code += "  net_" + std::to_string(assign.target_net_id) + " = ";
+    *code += "    net_" + std::to_string(assign.target_net_id) + " = ";
     EmitExprCode(assign.rhs_expr, code, diagnostics);
     *code += ";\n";
   }
-
-  *code += "}\n\n";
 }
 
 void CodeGenerator::EmitExprCode(const ResolvedExprIR& expr,
@@ -161,9 +244,9 @@ void CodeGenerator::EmitExprCode(const ResolvedExprIR& expr,
         *code += "/* ERROR: null rhs */";
         return;
       }
-      *code += "~(";
+      *code += "((";
       EmitExprCode(*expr.rhs, code, diagnostics);
-      *code += ")";
+      *code += ") == 0 ? 1 : 0)";
       break;
 
     case ResolvedExprIR::Kind::Binary:
@@ -181,12 +264,107 @@ void CodeGenerator::EmitExprCode(const ResolvedExprIR& expr,
   }
 }
 
+void CodeGenerator::EmitAlwaysBlock(const ResolvedAlwaysIR& always_block,
+                                    std::string* code,
+                                    std::vector<Diagnostic>* diagnostics) const {
+  if (always_block.sensitivity_kind == ResolvedAlwaysIR::SensitivityKind::Posedge) {
+    if (always_block.sensitivity_net_ids.empty()) {
+      diagnostics->push_back(MakeCodeGenError("code generation: posedge always block has no sensitivity net"));
+      return;
+    }
+    *code += "    if (";
+    for (std::size_t i = 0; i < always_block.sensitivity_net_ids.size(); ++i) {
+      if (i != 0) {
+        *code += " || ";
+      }
+      const int net_id = always_block.sensitivity_net_ids[i];
+      *code += "(prev_net_" + std::to_string(net_id) + " == 0 && net_" + std::to_string(net_id) + " == 1)";
+    }
+    *code += ") {\n";
+    if (always_block.body != nullptr) {
+      EmitProcessStmt(*always_block.body, code, diagnostics);
+    }
+    *code += "    }\n";
+    return;
+  }
+
+  if (always_block.body == nullptr) {
+    return;
+  }
+
+  EmitProcessStmt(*always_block.body, code, diagnostics);
+}
+
+void CodeGenerator::EmitProcessStmt(const ResolvedProcessStmtIR& stmt,
+                                    std::string* code,
+                                    std::vector<Diagnostic>* diagnostics) const {
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::Assignment) {
+    if (stmt.assign_stmt == nullptr) {
+      diagnostics->push_back(MakeCodeGenError("code generation: procedural assignment is missing"));
+      return;
+    }
+
+    const int target_net_id = stmt.assign_stmt->target_net_id;
+    if (stmt.assign_stmt->assignment_kind == ResolvedProceduralAssignIR::AssignmentKind::Blocking) {
+      *code += "    net_" + std::to_string(target_net_id) + " = ";
+      EmitExprCode(stmt.assign_stmt->rhs_expr, code, diagnostics);
+      *code += ";\n";
+    } else {
+      *code += "    nb_net_" + std::to_string(target_net_id) + " = ";
+      EmitExprCode(stmt.assign_stmt->rhs_expr, code, diagnostics);
+      *code += ";\n";
+      *code += "    has_nb_net_" + std::to_string(target_net_id) + " = true;\n";
+    }
+    return;
+  }
+
+  if (stmt.kind == ResolvedProcessStmtIR::Kind::If) {
+    if (stmt.if_stmt == nullptr) {
+      diagnostics->push_back(MakeCodeGenError("code generation: if statement is missing"));
+      return;
+    }
+
+    *code += "    if (";
+    EmitExprCode(stmt.if_stmt->condition_expr, code, diagnostics);
+    *code += ") {\n";
+    if (stmt.if_stmt->then_stmt != nullptr) {
+      EmitProcessStmt(*stmt.if_stmt->then_stmt, code, diagnostics);
+    }
+    *code += "    }\n";
+    return;
+  }
+
+  for (const auto& nested_stmt : stmt.statements) {
+    if (nested_stmt != nullptr) {
+      EmitProcessStmt(*nested_stmt, code, diagnostics);
+    }
+  }
+}
+
 void CodeGenerator::EmitMainFunction(const ElaboratedDesign& design,
                                      const CodeGenProgramOptions& options,
                                      std::string* code,
                                      std::vector<Diagnostic>* diagnostics) const {
   *code += "\nint main() {\n";
   *code += "  " + design.top_name + " sim;\n";
+
+  for (const auto& [name, value] : options.previous_input_values) {
+    if (!IsBitValue(value)) {
+      diagnostics->push_back(MakeCodeGenError("code generation: previous input value must be 0 or 1: " + name));
+      continue;
+    }
+
+    const auto it = std::find_if(
+        design.top_graph.nets.begin(), design.top_graph.nets.end(), [&](const ResolvedNetIR& net) {
+          return net.qualified_name == name;
+        });
+    if (it == design.top_graph.nets.end()) {
+      diagnostics->push_back(MakeCodeGenError("code generation: previous input net not found: " + name));
+      continue;
+    }
+
+    *code += "  sim.prev_net_" + std::to_string(it->id) + " = " + std::to_string(value) + ";\n";
+  }
 
   for (const auto& [name, value] : options.input_values) {
     if (!IsBitValue(value)) {

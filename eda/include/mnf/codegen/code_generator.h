@@ -19,6 +19,7 @@ struct CodeGenResult {
 };
 
 struct CodeGenProgramOptions {
+  std::unordered_map<std::string, int> previous_input_values;
   std::unordered_map<std::string, int> input_values;
   bool print_all_nets = false;
 };
@@ -40,6 +41,15 @@ private:
                             const std::string& top_name,
                             std::string* code,
                             std::vector<Diagnostic>* diagnostics) const;
+  void EmitAssignStatements(const ResolvedNetGraphIR& graph,
+                            std::string* code,
+                            std::vector<Diagnostic>* diagnostics) const;
+  void EmitAlwaysBlock(const ResolvedAlwaysIR& always_block,
+                       std::string* code,
+                       std::vector<Diagnostic>* diagnostics) const;
+  void EmitProcessStmt(const ResolvedProcessStmtIR& stmt,
+                       std::string* code,
+                       std::vector<Diagnostic>* diagnostics) const;
   void EmitMainFunction(const ElaboratedDesign& design,
                         const CodeGenProgramOptions& options,
                         std::string* code,

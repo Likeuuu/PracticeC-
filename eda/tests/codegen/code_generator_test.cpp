@@ -35,9 +35,11 @@ mnf::ElaboratedDesign BuildDesign(const std::string& input) {
 // 运行编译型仿真：生成C++ → g++编译 → 执行 → 解析输出
 // 输出格式：每行 "net_<id>=<value>"
 std::unordered_map<int, int> RunCompiledSim(const mnf::ElaboratedDesign& design,
-                                            const std::unordered_map<std::string, int>& input_values) {
+                                            const std::unordered_map<std::string, int>& input_values,
+                                            const std::unordered_map<std::string, int>& previous_input_values = {}) {
   mnf::CodeGenerator gen;
   mnf::CodeGenProgramOptions options;
+  options.previous_input_values = previous_input_values;
   options.input_values = input_values;
   options.print_all_nets = true;
 
@@ -74,12 +76,15 @@ std::unordered_map<int, int> RunCompiledSim(const mnf::ElaboratedDesign& design,
 
 void ExpectCompiledSimMatchesInterpreter(
     const mnf::ElaboratedDesign& design,
-    const std::unordered_map<std::string, int>& input_values) {
+    const std::unordered_map<std::string, int>& input_values,
+    const std::unordered_map<std::string, int>& previous_input_values = {}) {
   mnf::CombinationalEvaluator evaluator;
-  const auto interp_result = evaluator.Evaluate(design.top_graph, input_values);
+  const auto interp_result = previous_input_values.empty()
+                                 ? evaluator.Evaluate(design.top_graph, input_values)
+                                 : evaluator.EvaluateTransition(design.top_graph, previous_input_values, input_values);
   ASSERT_TRUE(interp_result.Ok());
 
-  const auto compiled_results = RunCompiledSim(design, input_values);
+  const auto compiled_results = RunCompiledSim(design, input_values, previous_input_values);
 
   for (const auto& net : design.top_graph.nets) {
     const int interp_val = interp_result.net_values[static_cast<std::size_t>(net.id)];
@@ -142,7 +147,7 @@ endmodule
   const auto result = gen.Generate(design);
 
   ASSERT_TRUE(result.Ok());
-  EXPECT_NE(result.source.find("~("), std::string::npos);
+  EXPECT_NE(result.source.find("? 1 : 0"), std::string::npos);
   EXPECT_NE(result.source.find("|"), std::string::npos);
   EXPECT_NE(result.source.find("&"), std::string::npos);
 }
@@ -227,4 +232,74 @@ endmodule
   const auto design = BuildDesign(input);
   ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 1}});
   ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 0}});
+}
+
+TEST(CodeGeneratorTest, CompiledSimMatchesBlockingAlways) {
+  const std::string input = R"(module top(in1, out1);
+  input in1;
+  output out1;
+  reg state;
+  assign out1 = state;
+  always begin
+    state = in1;
+  end
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}});
+}
+
+TEST(CodeGeneratorTest, CompiledSimMatchesNonBlockingAlways) {
+  const std::string input = R"(module top(in1, out1, out2);
+  input in1;
+  output out1;
+  output out2;
+  reg state;
+  assign out2 = state;
+  always begin
+    state <= in1;
+    out1 = state;
+  end
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}});
+}
+
+TEST(CodeGeneratorTest, CompiledSimMatchesIfInsideAlways) {
+  const std::string input = R"(module top(in1, in2, out1);
+  input in1;
+  input in2;
+  output out1;
+  reg state;
+  assign out1 = state;
+  always begin
+    if (in1) begin
+      state = in2;
+    end
+  end
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"in1", 1}, {"in2", 1}});
+}
+
+TEST(CodeGeneratorTest, CompiledSimMatchesPosedgeAlways) {
+  const std::string input = R"(module top(clk, d, q);
+  input clk;
+  input d;
+  output q;
+  reg state;
+  assign q = state;
+  always @(posedge clk) begin
+    state <= d;
+  end
+endmodule
+)";
+
+  const auto design = BuildDesign(input);
+  ExpectCompiledSimMatchesInterpreter(design, {{"clk", 1}, {"d", 1}}, {{"clk", 0}, {"d", 1}});
 }
