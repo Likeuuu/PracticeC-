@@ -4,6 +4,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "mnf/codegen/code_generator.h"
@@ -52,9 +53,33 @@ OutputFormat ParseOutputFormat(const std::string& arg) {
   return OutputFormat::Both;
 }
 
+bool ParseSignalValueArg(const std::string& value,
+                         const std::string& prefix,
+                         std::unordered_map<std::string, int>* values) {
+  if (value.rfind(prefix, 0) != 0) {
+    return false;
+  }
+
+  const std::string binding = value.substr(prefix.size());
+  const auto eq = binding.find('=');
+  if (eq == std::string::npos) {
+    return false;
+  }
+
+  const std::string name = binding.substr(0, eq);
+  const std::string raw_value = binding.substr(eq + 1);
+  if (name.empty() || (raw_value != "0" && raw_value != "1")) {
+    return false;
+  }
+
+  (*values)[name] = raw_value == "1" ? 1 : 0;
+  return true;
+}
+
 void PrintUsage() {
   std::cout << "MiniNetlistFrontend bootstrap\n";
   std::cout << "Usage: mnf_cli <input-file> [top-module] [--format=text|json|both|cpp]\n";
+  std::cout << "       [--input=name=0|1] [--prev=name=0|1] [--print-nets]\n";
 }
 
 }  // namespace
@@ -68,11 +93,22 @@ int CliApp::Run(int argc, char** argv) const {
   const std::string input_path = argv[1];
   std::string top_name = "top";
   OutputFormat format = OutputFormat::Both;
+  CodeGenProgramOptions codegen_options;
 
   for (int i = 2; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg.rfind("--format=", 0) == 0) {
       format = ParseOutputFormat(arg);
+      continue;
+    }
+    if (arg == "--print-nets") {
+      codegen_options.print_all_nets = true;
+      continue;
+    }
+    if (ParseSignalValueArg(arg, "--input=", &codegen_options.input_values)) {
+      continue;
+    }
+    if (ParseSignalValueArg(arg, "--prev=", &codegen_options.previous_input_values)) {
       continue;
     }
     top_name = arg;
@@ -108,7 +144,7 @@ int CliApp::Run(int argc, char** argv) const {
   CodeGenerator code_generator;
 
   if (format == OutputFormat::Cpp) {
-    const auto codegen_result = code_generator.Generate(*design_result.value);
+    const auto codegen_result = code_generator.GenerateProgram(*design_result.value, codegen_options);
     if (!codegen_result.Ok()) {
       PrintDiagnostics(codegen_result.diagnostics);
       return 1;
